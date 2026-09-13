@@ -141,18 +141,10 @@ class TerminalEmulator(
         }
     }
 
-    var dirty = true
-        private set
-
-    fun markClean() {
-        dirty = false
-    }
-
     /** 喂入服务器字节流（增量，UTF-8 多字节可跨块） */
     fun feed(bytes: ByteArray) {
         if (bytes.isEmpty()) return
         for (b in bytes) feedByte(b.toInt() and 0xFF)
-        dirty = true
     }
 
     private fun process(c: Char) {
@@ -231,9 +223,6 @@ class TerminalEmulator(
         val v = parts[i].toIntOrNull() ?: return def
         return if (v == 0) def else v
     }
-
-    private fun allParams(): List<Int> =
-        params.toString().split(';').map { it.toIntOrNull() ?: 0 }.filter { true }.ifEmpty { listOf(0) }
 
     private fun dispatch(final: Char) {
         if (privatePrefix) {
@@ -532,7 +521,6 @@ class TerminalEmulator(
         main = newMain; alt = newAlt
         scrollTop = 0; scrollBottom = nr - 1
         clampCursor()
-        dirty = true
     }
 
     private fun copyInto(src: Buffer, dst: Buffer) {

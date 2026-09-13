@@ -73,10 +73,4 @@ class DetailViewModel(app: Application, private val hostId: Long) : AndroidViewM
         mgr.probeRepo.refreshAsync(h)
     }
 
-    fun linkedSshFirst(): List<SshHostEntity> {
-        val h = host.value ?: return emptyList()
-        val all = sshHosts.value
-        return if (h.sshHostId == null) all
-        else all.sortedByDescending { it.id == h.sshHostId }
-    }
 }
