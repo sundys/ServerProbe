@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"runtime"
 	"sort"
 	"strconv"
@@ -28,16 +29,23 @@ type netSample struct {
 
 // Collector 后台每 2s 采样一次，处理请求时直接返回缓存快照，保证接口低延迟。
 type Collector struct {
-	mu      sync.Mutex
-	info    HostInfo
-	prevCPU cpuSample
-	prevNet netSample
-	cache   Status
-	started time.Time
+	mu          sync.Mutex
+	info        HostInfo
+	prevCPU     cpuSample
+	prevNet     netSample
+	cache       Status
+	started     time.Time
+	traffic     TrafficState
+	trafficMu   sync.Mutex
+	trafficPath string
 }
 
-func NewCollector() *Collector {
+func NewCollector(dataDir string) *Collector {
 	c := &Collector{started: time.Now()}
+	if dataDir != "" {
+		c.trafficPath = filepath.Join(dataDir, "traffic.json")
+		c.traffic = *loadTraffic(c.trafficPath)
+	}
 	c.info = HostInfo{
 		Hostname:     hostname(),
 		OS:           osRelease(),
@@ -158,6 +166,18 @@ func (c *Collector) Refresh() {
 
 	c.prevCPU = cpuSample{at: now, total: cpuNow.total, cores: cpuNow.cores}
 	c.prevNet = netSample{at: now, ifs: netNow}
+
+	// 流量统计：全网卡（已过滤虚拟网卡）累计计数推进 日/月/总 口径
+	var curRx, curTx uint64
+	for _, t := range netNow {
+		curRx += t[0]
+		curTx += t[1]
+	}
+	c.trafficMu.Lock()
+	c.traffic.ApplyUpdate(now, curRx, curTx)
+	day, month, total := c.traffic.Snapshot()
+	c.trafficMu.Unlock()
+
 	c.cache = Status{
 		HostInfo:     c.info,
 		CPUPercent:   cpuPct,
@@ -172,6 +192,9 @@ func (c *Collector) Refresh() {
 		UptimeSec: upSec,
 		Disks:     readDisks(),
 		Net:       netRates,
+		NetDay:    day,
+		NetMonth:  month,
+		NetTotal:  total,
 		Time:      now.Format(time.RFC3339),
 	}
 	c.mu.Unlock()
@@ -340,7 +363,7 @@ func readNetTotals() map[string][2]uint64 {
 			continue
 		}
 		name := strings.TrimSpace(line[:idx])
-		if name == "lo" {
+		if isVirtualIface(name) {
 			continue
 		}
 		f := strings.Fields(line[idx+1:])
@@ -407,4 +430,25 @@ func int8ArrayString(arr []int8) string {
 		b = append(b, byte(v))
 	}
 	return string(b)
+}
+
+// PersistTraffic 将流量累计器落盘（数据目录下的 traffic.json）。
+func (c *Collector) PersistTraffic() {
+	if c.trafficPath == "" {
+		return
+	}
+	c.trafficMu.Lock()
+	s := c.traffic
+	c.trafficMu.Unlock()
+	_ = saveTraffic(c.trafficPath, &s)
+}
+
+// isVirtualIface 过滤虚拟/容器网卡，避免 veth 对等造成的流量重复统计。
+func isVirtualIface(name string) bool {
+	for _, p := range []string{"lo", "veth", "docker", "br-", "virbr"} {
+		if strings.HasPrefix(name, p) {
+			return true
+		}
+	}
+	return false
 }

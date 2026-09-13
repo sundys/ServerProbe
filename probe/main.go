@@ -146,8 +146,23 @@ func cmdServe(args []string) {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	col := NewCollector()
+	col := NewCollector(filepath.Dir(*cfgFile))
 	col.Start(ctx)
+
+	// 流量统计持久化：每分钟落盘一次，进程退出时再落一次
+	go func() {
+		ticker := time.NewTicker(time.Minute)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				col.PersistTraffic()
+				return
+			case <-ticker.C:
+				col.PersistTraffic()
+			}
+		}
+	}()
 
 	var svc ServiceManager = systemdManager{}
 	srv := &apiServer{cfg: cfg, col: col, svc: svc, rl: newRateLimiter(cfg.RateLimitPerMin)}

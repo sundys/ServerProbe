@@ -61,6 +61,7 @@ import com.serverprobe.manager.ui.components.StatusDot
 import com.serverprobe.manager.ui.components.formatBytes
 import com.serverprobe.manager.ui.components.formatBps
 import com.serverprobe.manager.ui.components.formatPct
+import com.serverprobe.manager.ui.components.formatTrafficMB
 import com.serverprobe.manager.ui.components.formatUptime
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -259,6 +260,21 @@ fun DetailScreen(
                             )
                         }
                     }
+                    // 流量统计（探针持久化累计；旧版探针无此数据时隐藏）
+                    st?.let { s ->
+                        val hasTraffic = s.netDay.total > 0 || s.netMonth.total > 0 || s.netTotal.total > 0
+                        if (hasTraffic) {
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                "流量统计（今日 / 本月 / 总计）",
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.onSurface,
+                            )
+                            TrafficStatRow("今日", s.netDay)
+                            TrafficStatRow("本月", s.netMonth)
+                            TrafficStatRow("总计", s.netTotal)
+                        }
+                    }
                 }
             }
 
@@ -411,6 +427,21 @@ private fun SectionCard(title: String, content: @Composable androidx.compose.fou
             Text(title, style = MaterialTheme.typography.titleMedium)
             content()
         }
+    }
+}
+
+@Composable
+private fun TrafficStatRow(label: String, usage: com.serverprobe.manager.data.probe.TrafficUsage) {
+    Row(
+        Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.width(52.dp))
+        Text(
+            "↓ ${formatTrafficMB(usage.rx)}   ↑ ${formatTrafficMB(usage.tx)}",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 

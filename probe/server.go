@@ -57,7 +57,11 @@ type Status struct {
 	UptimeSec    float64    `json:"uptime_sec"`
 	Disks        []DiskInfo `json:"disks"`
 	Net          []NetRate  `json:"net"`
-	Time         string     `json:"time"`
+	// 流量统计（探针持久化累计，单位字节）：今日 / 本月 / 总量
+	NetDay   TrafficUsage `json:"net_day"`
+	NetMonth TrafficUsage `json:"net_month"`
+	NetTotal TrafficUsage `json:"net_total"`
+	Time     string       `json:"time"`
 }
 
 type Service struct {
