@@ -3,6 +3,8 @@ package com.serverprobe.manager.ui.settings
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.biometric.BiometricManager
+import androidx.biometric.BiometricPrompt
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.size
@@ -138,7 +140,10 @@ fun SettingsScreen(
 
             // 刷新间隔
             Section("状态刷新间隔") {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+                androidx.compose.foundation.layout.FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
                     listOf(5, 10, 15, 30, 60).forEach { sec ->
                         FilterChip(
                             selected = pollInterval == sec,
@@ -160,7 +165,12 @@ fun SettingsScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
-                    Switch(checked = biometricLock, onCheckedChange = { vm.setBiometricLock(it) })
+                    Switch(
+                        checked = biometricLock,
+                        onCheckedChange = { want ->
+                            if (want) requestEnableBiometric(vm, ctx) else vm.setBiometricLock(false)
+                        },
+                    )
                 }
             }
 
@@ -330,7 +340,7 @@ fun SettingsScreen(
 
 @Composable
 private fun Section(title: String, content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit) {
-    Card {
+    Card(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             content()
@@ -342,6 +352,56 @@ private fun openUrl(context: android.content.Context, url: String) {
     runCatching {
         context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url)))
     }
+}
+
+/** 沿 ContextWrapper 链寻找 FragmentActivity（BiometricPrompt 必需）。 */
+private fun findFragmentActivity(context: android.content.Context): androidx.fragment.app.FragmentActivity? {
+    var c: android.content.Context = context
+    while (c is android.content.ContextWrapper) {
+        if (c is androidx.fragment.app.FragmentActivity) return c
+        c = c.baseContext
+    }
+    return null
+}
+
+/**
+ * 开启生物识别锁前先验证身份：验证通过才真正开启；
+ * 设备无可用认证手段或验证未通过/取消时保持关闭。
+ */
+private fun requestEnableBiometric(vm: SettingsViewModel, context: android.content.Context) {
+    val activity = findFragmentActivity(context)
+    if (activity == null) {
+        Toast.makeText(context, "无法发起身份验证", Toast.LENGTH_SHORT).show()
+        return
+    }
+    val allowed = BiometricManager.Authenticators.BIOMETRIC_WEAK or
+        BiometricManager.Authenticators.DEVICE_CREDENTIAL
+    if (BiometricManager.from(activity).canAuthenticate(allowed) !=
+        BiometricManager.BIOMETRIC_SUCCESS
+    ) {
+        Toast.makeText(context, "设备未录入指纹或未设置锁屏凭据，无法开启", Toast.LENGTH_LONG).show()
+        return
+    }
+    val prompt = BiometricPrompt(
+        activity,
+        androidx.core.content.ContextCompat.getMainExecutor(activity),
+        object : BiometricPrompt.AuthenticationCallback() {
+            override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                vm.setBiometricLock(true)
+                Toast.makeText(context, "生物识别锁已开启", Toast.LENGTH_SHORT).show()
+            }
+
+            override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+                Toast.makeText(context, "验证未完成，生物识别锁未开启", Toast.LENGTH_SHORT).show()
+            }
+        },
+    )
+    val info = BiometricPrompt.PromptInfo.Builder()
+        .setTitle("开启生物识别锁")
+        .setSubtitle("验证身份以启用该功能")
+        .setAllowedAuthenticators(allowed)
+        .build()
+    prompt.authenticate(info)
 }
 
 /** 汇总设备信息与最近崩溃堆栈到剪贴板，便于反馈问题定位。 */
