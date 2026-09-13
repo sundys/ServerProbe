@@ -36,7 +36,7 @@ class App : Application() {
         settings = SettingsRepository(this)
         sshRepo = SshRepository(db.sshHostDao())
         probeRepo = ProbeRepository(db.probeHostDao(), sshRepo, settings, appScope)
-        backupManager = BackupManager(db, settings)
+        backupManager = BackupManager(db, settings, com.serverprobe.manager.remote.LinkStore(this))
         probeRepo.start()
         installCrashHook()
     }

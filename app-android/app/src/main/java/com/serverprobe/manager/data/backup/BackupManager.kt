@@ -17,7 +17,19 @@ import android.util.Base64
 class BackupManager(
     private val db: AppDatabase,
     private val settings: SettingsRepository,
+    private val linkStore: com.serverprobe.manager.remote.LinkStore,
 ) {
+
+    @Serializable
+    data class BackupRemoteLink(
+        val id: String,
+        val url: String,
+        val name: String,
+        val version: String = "",
+        val host: String = "",
+        val createdAt: Long = 0,
+        val lastOpenedAt: Long = 0,
+    )
 
     @Serializable
     data class BackupProbeHost(
@@ -57,6 +69,7 @@ class BackupManager(
         val created: Long = 0,
         val probeHosts: List<BackupProbeHost> = emptyList(),
         val sshHosts: List<BackupSshHost> = emptyList(),
+        val remoteLinks: List<BackupRemoteLink> = emptyList(),
         val settings: BackupSettings = BackupSettings(),
     )
 
@@ -71,7 +84,7 @@ class BackupManager(
         val data: String,
     )
 
-    data class ImportResult(val probes: Int, val sshHosts: Int)
+    data class ImportResult(val probes: Int, val sshHosts: Int, val links: Int = 0)
 
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
 
@@ -102,6 +115,13 @@ class BackupManager(
             created = System.currentTimeMillis(),
             probeHosts = probeHosts,
             sshHosts = sshHosts,
+            remoteLinks = linkStore.load().map {
+                BackupRemoteLink(
+                    id = it.id, url = it.url, name = it.name,
+                    version = it.version, host = it.host,
+                    createdAt = it.createdAt, lastOpenedAt = it.lastOpenedAt,
+                )
+            },
             settings = BackupSettings(
                 displayMode = when (settings.displayMode.first()) {
                     com.serverprobe.manager.data.repo.DisplayMode.LIGHT -> 1
@@ -194,7 +214,23 @@ class BackupManager(
         }
 
         settings.setPollIntervalSec(payload.settings.pollIntervalSec)
-        ImportResult(probes = probeCount, sshHosts = sshCount)
+
+        // 远程链接：按 id upsert（同 id 覆盖，其余保留）
+        for (l in payload.remoteLinks) {
+            linkStore.upsert(
+                com.serverprobe.manager.remote.Link(
+                    id = l.id,
+                    url = l.url,
+                    name = l.name,
+                    version = l.version,
+                    host = l.host,
+                    createdAt = l.createdAt,
+                    lastOpenedAt = l.lastOpenedAt,
+                )
+            )
+        }
+
+        ImportResult(probes = probeCount, sshHosts = sshCount, links = payload.remoteLinks.size)
     }
 
     companion object {
