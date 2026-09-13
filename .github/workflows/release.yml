@@ -22,23 +22,21 @@ jobs:
       - name: Build probe binaries (amd64 + arm64)
         working-directory: probe
         run: |
-          VER=${GITHUB_REF_NAME#v}
           mkdir -p pkg/amd64 pkg/arm64
           GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-s -w" -o pkg/amd64/serverprobe .
           GOOS=linux GOARCH=arm64 go build -trimpath -ldflags "-s -w" -o pkg/arm64/serverprobe .
           # 打包：二进制 + 安装脚本 + systemd 单元
+          # 资产名不含版本号，便于通过 releases/latest/download 固定链接引用（一键安装命令）
           cp install.sh pkg/amd64/ && cp -r systemd pkg/amd64/
           cp install.sh pkg/arm64/ && cp -r systemd pkg/arm64/
-          tar -czf ../serverprobe-v${VER}-linux-amd64.tar.gz -C pkg/amd64 .
-          tar -czf ../serverprobe-v${VER}-linux-arm64.tar.gz -C pkg/arm64 .
-          sha256sum ../*.tar.gz > sha256sums.txt
-          cat sha256sums.txt
+          tar -czf ../serverprobe-linux-amd64.tar.gz -C pkg/amd64 .
+          tar -czf ../serverprobe-linux-arm64.tar.gz -C pkg/arm64 .
 
       - uses: actions/upload-artifact@v4
         with:
           name: probe
           path: |
-            serverprobe-v*-linux-*.tar.gz
+            serverprobe-linux-*.tar.gz
 
   # ---------- Android App：armeabi-v7a + arm64-v8a ----------
   build-android:
@@ -62,14 +60,13 @@ jobs:
       - name: Rename APKs
         working-directory: app-android/app/build/outputs/apk/release
         run: |
-          VER=${GITHUB_REF_NAME#v}
-          mv app-arm64-v8a-release.apk ../../../../../ServerProbe-v${VER}-android-arm64-v8a.apk
-          mv app-armeabi-v7a-release.apk ../../../../../ServerProbe-v${VER}-android-armeabi-v7a.apk
+          mv app-arm64-v8a-release.apk ../../../../../Remoto-android-arm64-v8a.apk
+          mv app-armeabi-v7a-release.apk ../../../../../Remoto-android-armeabi-v7a.apk
 
       - uses: actions/upload-artifact@v4
         with:
           name: android
-          path: app-android/ServerProbe-v*-android-*.apk
+          path: app-android/Remoto-android-*.apk
 
   # ---------- 发布 Release（含更新摘要）----------
   release:

@@ -63,7 +63,7 @@ class MainActivity : FragmentActivity() {
         super.onPause()
         settingsJob?.cancel()
         settingsJob = null
-        if (biometricEnabled) locked.value = true
+        if (biometricEnabled && !ForegroundGuard.shouldSkipLock()) locked.value = true
     }
 
     private fun requestUnlock() {

@@ -11,12 +11,12 @@ android {
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.serverprobe.manager"
+        applicationId = "com.sundys.remoto"
         minSdk = 26
         targetSdk = 36
         // CI 通过 -PappVersion=<tag> 注入版本号；本地构建使用默认值
-        versionCode = 2
-        versionName = project.findProperty("appVersion") as String? ?: "1.0.1"
+        versionCode = 3
+        versionName = project.findProperty("appVersion") as String? ?: "1.0.2"
     }
 
     signingConfigs {

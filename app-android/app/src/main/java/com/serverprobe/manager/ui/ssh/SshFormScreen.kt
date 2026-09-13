@@ -146,7 +146,11 @@ fun SshFormScreen(
                 )
             } else {
                 OutlinedButton(
-                    onClick = { keyPicker.launch("*/*") },
+                    onClick = {
+                        // SAF 选择器会把本应用短暂切到后台，跳过一次生物识别锁，避免被误锁
+                        com.serverprobe.manager.ForegroundGuard.suppressLockOnce()
+                        keyPicker.launch("*/*")
+                    },
                     modifier = Modifier.fillMaxWidth(),
                 ) { Text("从文件选择私钥（OpenSSH / PEM PKCS#1 / PKCS#8 / PuTTY PPK）") }
                 val pk = form.privateKey
