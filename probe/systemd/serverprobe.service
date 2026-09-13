@@ -1,0 +1,17 @@
+[Unit]
+Description=ServerProbe monitoring agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStart=/usr/local/bin/serverprobe serve
+Restart=always
+RestartSec=3
+NoNewPrivileges=yes
+ProtectHome=yes
+PrivateTmp=yes
+RestrictSUIDSGID=yes
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target
