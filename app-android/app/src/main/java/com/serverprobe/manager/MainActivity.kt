@@ -1,5 +1,6 @@
 package com.serverprobe.manager
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -55,6 +56,13 @@ class MainActivity : FragmentActivity() {
             val enabled = App.instance.settings.biometricLock.first()
             if (enabled) requestUnlock() else locked.value = false
         }
+    }
+
+    /** 传统 startActivityForResult 通道（LegacyActivityResult）的结果转发。 */
+    @Deprecated("Deprecated in Java")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        com.serverprobe.manager.ui.components.LegacyActivityResult.deliver(requestCode, resultCode, data)
     }
 
     private fun requestUnlock() {
