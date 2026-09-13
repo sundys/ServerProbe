@@ -151,7 +151,7 @@ fun SettingsScreen(
                     Column(Modifier.weight(1f)) {
                         Text("生物识别锁", style = MaterialTheme.typography.bodyMedium)
                         Text(
-                            "切换到其他应用后需验证指纹/PIN 才能进入",
+                            "仅在应用启动时验证一次指纹/PIN，其余场景不再打扰",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
