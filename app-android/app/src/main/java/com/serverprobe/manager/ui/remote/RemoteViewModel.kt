@@ -2,17 +2,16 @@ package com.serverprobe.manager.ui.remote
 
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
-import androidx.lifecycle.viewModelScope
-import com.serverprobe.manager.App
 import com.serverprobe.manager.remote.Link
+import com.serverprobe.manager.remote.LinkStore
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.launch
 
 class RemoteViewModel(app: Application) : AndroidViewModel(app) {
 
-    private val store = App.get(app).let { com.serverprobe.manager.remote.LinkStore(it) }
+    private val store = LinkStore(app)
 
-    val links = MutableStateFlow<List<Link>>(emptyList())
+    /** 构造时同步预载，首帧即有数据，避免空态闪烁 */
+    val links = MutableStateFlow<List<Link>>(store.load())
 
     fun refresh() {
         links.value = store.load()
