@@ -1,7 +1,6 @@
 package com.serverprobe.manager.remote
 
 import android.app.Activity
-import android.view.View
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.fragment.app.FragmentActivity
