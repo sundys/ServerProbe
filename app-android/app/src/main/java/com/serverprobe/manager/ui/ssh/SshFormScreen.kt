@@ -1,8 +1,6 @@
 package com.serverprobe.manager.ui.ssh
 
 import android.widget.Toast
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -44,6 +42,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.serverprobe.manager.data.db.AUTH_KEY
 import com.serverprobe.manager.data.db.AUTH_PASSWORD
 import com.serverprobe.manager.ssh.SshKeyLoader
+import com.serverprobe.manager.ui.components.rememberKeyFilePickerLauncher
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -58,26 +57,18 @@ fun SshFormScreen(
     val saved by vm.saved.collectAsState()
     val ctx = LocalContext.current
 
-    val keyPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        if (uri != null) {
+    val launchKeyPicker = rememberKeyFilePickerLauncher(
+        onPicked = { uri ->
             runCatching {
                 ctx.contentResolver.openInputStream(uri)?.use { it.readBytes().toString(Charsets.UTF_8) }
             }.getOrNull()?.let { vm.update { f -> f.copy(privateKey = it, privateKeyChanged = true) } }
                 ?: Toast.makeText(ctx, "无法读取所选文件", Toast.LENGTH_SHORT).show()
-        }
-    }
-    // 部分精简 ROM 没有“文件选择器”组件，或打开期间杀后台；启动失败时引导改用粘贴输入
-    val launchKeyPicker = {
-        runCatching { keyPicker.launch("*/*") }
-            .onFailure {
-                Toast.makeText(
-                    ctx,
-                    "无法打开系统文件选择器（${it.javaClass.simpleName}），请改用下方“粘贴私钥内容”",
-                    Toast.LENGTH_LONG,
-                ).show()
-            }
-        Unit
-    }
+        },
+        onAllFailed = { detail ->
+            Toast.makeText(ctx, "所有文件选择通道均不可用，请使用“粘贴私钥内容”", Toast.LENGTH_LONG).show()
+            com.serverprobe.manager.Diagnostics.log(ctx, "key picker fail:\n$detail")
+        },
+    )
 
     LaunchedEffect(Unit) { if (editId > 0) vm.load() }
     LaunchedEffect(saved) { if (saved) onDone() }

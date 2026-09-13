@@ -1,5 +1,13 @@
 # 更新摘要 / Changelog
 
+## v1.0.5
+
+**修复（国产 ROM 专项）**
+- 定位到选私钥闪退/被切出前台的根本原因：**ColorOS 15 等系统对 ACTION_GET_CONTENT 通配 MIME 会同步抛出 IllegalArgumentException**（感谢用户提供的诊断信息确认）
+- 文件选择改为 **5 通道自动回退**，任一通道可用即可打开：OpenDocument → GetContent(二进制) → GetContent(文本) → GetContent(通配) → 系统选择器 Chooser 中转
+- 所有通道失败时明确提示改用「粘贴私钥内容」，并将每条通道的详细异常**写入诊断日志**（设置 → 关于 → 复制诊断日志），便于继续定位
+- 粘贴私钥输入（自动识别 OpenSSH / PEM PKCS#1 / PKCS#8 / PuTTY PPK）保持可用，作为终极保底
+
 ## v1.0.4
 
 **修复**
