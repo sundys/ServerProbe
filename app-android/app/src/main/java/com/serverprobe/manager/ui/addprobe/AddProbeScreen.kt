@@ -50,6 +50,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.serverprobe.manager.data.db.AUTH_KEY
 import com.serverprobe.manager.data.db.AUTH_PASSWORD
 import com.serverprobe.manager.ui.components.rememberKeyFilePickerLauncher
+import com.serverprobe.manager.ui.components.PickerFailureDialog
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -68,6 +69,7 @@ fun AddProbeScreen(
 
     var showInstallGuide by remember { mutableStateOf(false) }
     var sshKeyMenu by remember { mutableStateOf(false) }
+    var pickerFail by remember { mutableStateOf<String?>(null) }
 
     val launchKeyPicker = rememberKeyFilePickerLauncher(
         onPicked = { uri ->
@@ -78,7 +80,7 @@ fun AddProbeScreen(
             } ?: Toast.makeText(ctx, "无法读取所选文件", Toast.LENGTH_SHORT).show()
         },
         onAllFailed = { detail ->
-            Toast.makeText(ctx, "所有文件选择通道均不可用，请使用“粘贴私钥内容”", Toast.LENGTH_LONG).show()
+            pickerFail = detail
             com.serverprobe.manager.Diagnostics.log(ctx, "key picker fail:\n$detail")
         },
     )
@@ -333,6 +335,9 @@ fun AddProbeScreen(
             dismissButton = { TextButton(onClick = { vm.dismissFingerprint() }) { Text("取消") } },
         )
     }
+
+    // 文件选择器全通道失败弹窗
+    pickerFail?.let { PickerFailureDialog(detail = it, onDismiss = { pickerFail = null }) }
 
     // 安装指引
     if (showInstallGuide) {

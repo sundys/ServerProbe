@@ -30,6 +30,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -42,6 +45,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.serverprobe.manager.data.db.AUTH_KEY
 import com.serverprobe.manager.data.db.AUTH_PASSWORD
 import com.serverprobe.manager.ssh.SshKeyLoader
+import com.serverprobe.manager.ui.components.PickerFailureDialog
 import com.serverprobe.manager.ui.components.rememberKeyFilePickerLauncher
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -56,6 +60,7 @@ fun SshFormScreen(
     val testResult by vm.testResult.collectAsState()
     val saved by vm.saved.collectAsState()
     val ctx = LocalContext.current
+    var pickerFail by remember { mutableStateOf<String?>(null) }
 
     val launchKeyPicker = rememberKeyFilePickerLauncher(
         onPicked = { uri ->
@@ -65,7 +70,7 @@ fun SshFormScreen(
                 ?: Toast.makeText(ctx, "无法读取所选文件", Toast.LENGTH_SHORT).show()
         },
         onAllFailed = { detail ->
-            Toast.makeText(ctx, "所有文件选择通道均不可用，请使用“粘贴私钥内容”", Toast.LENGTH_LONG).show()
+            pickerFail = detail
             com.serverprobe.manager.Diagnostics.log(ctx, "key picker fail:\n$detail")
         },
     )
@@ -78,6 +83,8 @@ fun SshFormScreen(
             vm.clearTestResult()
         }
     }
+
+    pickerFail?.let { PickerFailureDialog(detail = it, onDismiss = { pickerFail = null }) }
 
     Scaffold(
         topBar = {
