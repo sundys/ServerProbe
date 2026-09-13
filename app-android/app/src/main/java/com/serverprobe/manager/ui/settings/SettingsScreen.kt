@@ -3,7 +3,9 @@ package com.serverprobe.manager.ui.settings
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -25,6 +27,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
@@ -44,9 +47,12 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.serverprobe.manager.ui.components.GithubIcon
+import com.serverprobe.manager.update.UpdateManager
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -59,6 +65,8 @@ fun SettingsScreen(
     val biometricLock by vm.biometricLock.collectAsState()
     val busy by vm.busy.collectAsState()
     val message by vm.message.collectAsState()
+    val currentVersion by vm.currentVersion.collectAsState()
+    val updateState by vm.updateState.collectAsState()
     val ctx = LocalContext.current
 
     var pendingExport by remember { mutableStateOf(false) }
@@ -179,13 +187,60 @@ fun SettingsScreen(
                 }
             }
 
+            // 检测更新
+            Section("检测更新") {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("当前版本 v${currentVersion}", style = MaterialTheme.typography.bodyMedium)
+                        Text(
+                            "多通道检测 GitHub 最新版本（直连 + 加速代理）",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Button(
+                        onClick = { vm.checkUpdate() },
+                        enabled = updateState !is SettingsViewModel.UpdateState.Checking &&
+                            updateState !is SettingsViewModel.UpdateState.Downloading,
+                    ) {
+                        if (updateState is SettingsViewModel.UpdateState.Checking) {
+                            CircularProgressIndicator(Modifier.height(14.dp).width(14.dp), strokeWidth = 2.dp)
+                            Spacer(Modifier.width(6.dp))
+                        }
+                        Text("检测更新")
+                    }
+                }
+            }
+
             // 关于
             Section("关于") {
                 Text(
-                    "ServerProbe 管理端 v1.0.0\n探针 Agent：Go 编译单二进制，systemd 常驻；\n通信：HTTPS + Bearer Token + 证书指纹锁定。",
+                    "ServerProbe 服务探针管家 v${currentVersion}\n管理多台服务器运行状态：探针监控 + SSH 终端，凭据全程加密存储。",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                // 开源主页（GitHub 图标 + 超链接）
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { openUrl(ctx, UpdateManager.REPO_URL) },
+                ) {
+                    Icon(
+                        GithubIcon,
+                        contentDescription = "GitHub",
+                        tint = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text("开源主页：", style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        "Github主页",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                        textDecoration = TextDecoration.Underline,
+                    )
+                }
             }
             Spacer(Modifier.height(20.dp))
         }
@@ -261,6 +316,9 @@ fun SettingsScreen(
             dismissButton = { TextButton(onClick = { pendingImportUri = null }) { Text("取消") } },
         )
     }
+
+    // 检测更新相关弹窗（新版本/下载进度/结果）
+    UpdateDialogs(vm)
 }
 
 @Composable
@@ -272,3 +330,78 @@ private fun Section(title: String, content: @Composable androidx.compose.foundat
         }
     }
 }
+
+private fun openUrl(context: android.content.Context, url: String) {
+    runCatching {
+        context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url)))
+    }
+}
+
+/** 检测更新状态弹窗：新版本 / 下载进度 / 结果提示 */
+@Composable
+private fun UpdateDialogs(vm: SettingsViewModel) {
+    val updateState by vm.updateState.collectAsState()
+    when (val s = updateState) {
+        is SettingsViewModel.UpdateState.Available -> AlertDialog(
+            onDismissRequest = { vm.dismissUpdate() },
+            title = { Text("发现新版本 v${s.info.version}") },
+            text = {
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    Text(
+                        s.info.notes.ifBlank { "暂无更新说明" },
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    Text(
+                        "安装包：${s.info.apkName}（${formatMb(s.info.apkSize)}）",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            },
+            confirmButton = { Button(onClick = { vm.downloadUpdate(s.info) }) { Text("下载并安装") } },
+            dismissButton = { TextButton(onClick = { vm.dismissUpdate() }) { Text("以后再说") } },
+        )
+        is SettingsViewModel.UpdateState.Downloading -> AlertDialog(
+            onDismissRequest = {},
+            title = { Text("正在下载更新") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    val total = if (s.total > 0) s.total else 1L
+                    LinearProgressIndicator(
+                        progress = { (s.received.toFloat() / total).coerceIn(0f, 1f) },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Text(
+                        "${formatMb(s.received)} / ${formatMb(s.total)}（${(s.received * 100 / total)}%）",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    Text(
+                        "下载完成后将自动唤起系统安装器",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            },
+            confirmButton = {},
+        )
+        is SettingsViewModel.UpdateState.UpToDate -> AlertDialog(
+            onDismissRequest = { vm.dismissUpdate() },
+            title = { Text("已是最新版本") },
+            text = { Text("当前 v${vm.currentVersion.value} 已是最新（远端 v${s.version}）。") },
+            confirmButton = { TextButton(onClick = { vm.dismissUpdate() }) { Text("好的") } },
+        )
+        is SettingsViewModel.UpdateState.Failed -> AlertDialog(
+            onDismissRequest = { vm.dismissUpdate() },
+            title = { Text("操作失败") },
+            text = { Text(s.msg) },
+            confirmButton = { TextButton(onClick = { vm.dismissUpdate() }) { Text("关闭") } },
+        )
+        else -> Unit
+    }
+}
+
+private fun formatMb(bytes: Long): String =
+    if (bytes <= 0) "0 MB" else "%.1f MB".format(bytes / 1024.0 / 1024.0)
