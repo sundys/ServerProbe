@@ -95,7 +95,7 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
                         mgr.backupManager.import(it, passphrase, replaceAll)
                     } ?: throw IllegalStateException("无法打开备份文件")
                 }
-                message.value = true to "恢复完成：探针主机 ${result.probes} 个，SSH 主机 ${result.sshHosts} 个"
+                message.value = true to "恢复完成：探针主机 ${result.probes} 个，SSH 主机 ${result.sshHosts} 个，远程链接 ${result.links} 个"
             } catch (e: Exception) {
                 message.value = false to "恢复失败: ${e.message}"
             } finally {

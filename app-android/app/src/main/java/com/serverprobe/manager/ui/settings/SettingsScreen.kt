@@ -154,24 +154,24 @@ fun SettingsScreen(
                 }
             }
 
-            // 安全
-            Section("安全") {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text("生物识别锁", style = MaterialTheme.typography.bodyMedium)
-                        Text(
-                            "仅在应用启动时验证一次指纹/PIN，其余场景不再打扰",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
+            // 安全：开关与标题同行
+            Section(
+                "安全",
+                trailing = {
                     Switch(
                         checked = biometricLock,
                         onCheckedChange = { want ->
                             if (want) requestEnableBiometric(vm, ctx) else vm.setBiometricLock(false)
                         },
                     )
-                }
+                },
+            ) {
+                Text("生物识别锁", style = MaterialTheme.typography.bodyMedium)
+                Text(
+                    "仅在应用启动时验证一次指纹/PIN，其余场景不再打扰",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
 
             // 备份与恢复
@@ -201,17 +201,9 @@ fun SettingsScreen(
                 }
             }
 
-            // 检测更新
-            Section("检测更新") {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text("当前版本 v${currentVersion}", style = MaterialTheme.typography.bodyMedium)
-                        Text(
-                            "多通道检测 GitHub 最新版本（直连 + 加速代理）",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
+            // 检测更新：按钮占标题位，无标题
+            Section(
+                trailing = {
                     Button(
                         onClick = { vm.checkUpdate() },
                         enabled = updateState !is SettingsViewModel.UpdateState.Checking &&
@@ -223,13 +215,20 @@ fun SettingsScreen(
                         }
                         Text("检测更新")
                     }
-                }
+                },
+            ) {
+                Text("当前版本 v${currentVersion}", style = MaterialTheme.typography.bodyMedium)
+                Text(
+                    "多通道检测 GitHub 最新版本（直连 + 加速代理）",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
 
-            // 关于
-            Section("关于") {
+            // 备份与恢复
+            Section("备份与恢复") {
                 Text(
-                    "云枢 Remoto（服务探针管理系统）v${currentVersion}\n管理多台服务器运行状态：探针监控 + SSH 终端，凭据全程加密存储。",
+                    "备份包含全部探针主机、SSH 主机与远程链接（含凭据），使用口令加密（PBKDF2 + AES-256-GCM）。",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -339,10 +338,29 @@ fun SettingsScreen(
 }
 
 @Composable
-private fun Section(title: String, content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit) {
+private fun Section(
+    title: String? = null,
+    trailing: (@Composable () -> Unit)? = null,
+    content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit,
+) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            if (title != null || trailing != null) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    if (title != null) {
+                        Text(
+                            title,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                    trailing?.invoke()
+                }
+            }
             content()
         }
     }
