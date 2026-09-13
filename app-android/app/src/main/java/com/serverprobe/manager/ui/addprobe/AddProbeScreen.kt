@@ -78,6 +78,12 @@ fun AddProbeScreen(
             } ?: Toast.makeText(ctx, "无法读取所选文件", Toast.LENGTH_SHORT).show()
         }
     }
+    // SAF 选择器会短暂切后台；发起前抑制一次生物识别锁
+    val launchKeyPicker = {
+        com.serverprobe.manager.ForegroundGuard.suppressLockOnce()
+        keyPicker.launch("*/*")
+        Unit
+    }
 
     LaunchedEffect(saved) { if (saved) onDone() }
     LaunchedEffect(testResult) {
@@ -264,7 +270,7 @@ fun AddProbeScreen(
                             modifier = Modifier.fillMaxWidth(),
                         )
                     } else {
-                        OutlinedButton(onClick = { keyPicker.launch("*/*") }, modifier = Modifier.fillMaxWidth()) {
+                        OutlinedButton(onClick = launchKeyPicker, modifier = Modifier.fillMaxWidth()) {
                             Text(form.sshPrivateKey?.let { "已选择私钥（点击更换）" } ?: "选择私钥文件")
                         }
                     }

@@ -134,7 +134,7 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
             try {
                 val dest = File(
                     getApplication<Application>().cacheDir,
-                    "apk/${info.apkName.ifEmpty { "update.apk" }}",
+                    "apk/${info.apkName.ifEmpty { "remoto-update.apk" }}",
                 )
                 val file = com.serverprobe.manager.update.UpdateManager.downloadApk(
                     info.apkUrl, dest,

@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
@@ -34,6 +35,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -42,11 +44,13 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -86,6 +90,23 @@ fun HomeScreen(
     var deleteProbe by remember { mutableStateOf<ProbeHostEntity?>(null) }
     var deleteSsh by remember { mutableStateOf<com.serverprobe.manager.data.db.SshHostEntity?>(null) }
 
+    // 上滑隐藏、下滑显示的悬浮按钮
+    val listState = rememberLazyListState()
+    var fabVisible by remember { mutableStateOf(true) }
+    LaunchedEffect(listState) {
+        var lastIndex = 0
+        var lastOffset = 0
+        snapshotFlow { listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset }
+            .collect { (index, offset) ->
+                when {
+                    index > lastIndex || (index == lastIndex && offset > lastOffset + 2) -> fabVisible = false
+                    index < lastIndex || (index == lastIndex && offset < lastOffset - 2) -> fabVisible = true
+                }
+                lastIndex = index
+                lastOffset = offset
+            }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -97,11 +118,19 @@ fun HomeScreen(
         },
         floatingActionButton = {
             Box {
-                ExtendedFloatingActionButton(
-                    onClick = { fabMenu = true },
-                    icon = { Icon(Icons.Default.Add, null) },
-                    text = { Text("添加") },
-                )
+                androidx.compose.animation.AnimatedVisibility(
+                    visible = fabVisible,
+                    enter = androidx.compose.animation.scaleIn() + androidx.compose.animation.fadeIn(),
+                    exit = androidx.compose.animation.scaleOut() + androidx.compose.animation.fadeOut(),
+                ) {
+                    FloatingActionButton(
+                        onClick = { fabMenu = true },
+                        shape = CircleShape,
+                        containerColor = MaterialTheme.colorScheme.primary,
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = "添加")
+                    }
+                }
                 DropdownMenu(expanded = fabMenu, onDismissRequest = { fabMenu = false }) {
                     DropdownMenuItem(
                         text = { Text("添加探针主机") },
@@ -163,7 +192,7 @@ fun HomeScreen(
                     modifier = Modifier.padding(horizontal = 20.dp),
                 )
             } else {
-                LazyColumn(modifier = Modifier.weight(1f)) {
+                LazyColumn(state = listState, modifier = Modifier.weight(1f)) {
                     items(sshHosts, key = { it.id }) { ssh ->
                         SshQuickItem(
                             ssh = ssh,

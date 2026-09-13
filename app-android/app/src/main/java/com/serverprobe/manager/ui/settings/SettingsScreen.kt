@@ -215,7 +215,7 @@ fun SettingsScreen(
             // 关于
             Section("关于") {
                 Text(
-                    "ServerProbe 服务探针管家 v${currentVersion}\n管理多台服务器运行状态：探针监控 + SSH 终端，凭据全程加密存储。",
+                    "云枢 Remoto（服务探针管理系统）v${currentVersion}\n管理多台服务器运行状态：探针监控 + SSH 终端，凭据全程加密存储。",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
