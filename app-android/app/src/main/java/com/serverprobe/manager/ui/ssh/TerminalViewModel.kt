@@ -76,8 +76,16 @@ class TerminalViewModel(app: Application) : AndroidViewModel(app) {
                 val emu = TerminalEmulator(cols, rows) { resp -> runCatching { s.write(resp) } }
                 emulator.value = emu
                 state.value = TState.Connected
-                for (chunk in s.output) {
-                    emu.feed(chunk)
+                // 批量合并输出块：高吞吐场景（如 cat 大文件）下减少解析与重绘次数
+                for (first in s.output) {
+                    var batch = first
+                    var size = first.size
+                    while (size < 256 * 1024) {
+                        val more = s.output.tryReceive().getOrNull() ?: break
+                        batch += more
+                        size += more.size
+                    }
+                    emu.feed(batch)
                     dataVersion.value++
                 }
                 // 输出通道关闭 = 连接断开

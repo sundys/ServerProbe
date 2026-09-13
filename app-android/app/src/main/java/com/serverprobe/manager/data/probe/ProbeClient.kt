@@ -21,6 +21,7 @@ import okhttp3.Protocol
 import okhttp3.Request
 import okhttp3.Response
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.RequestBody.Companion.toRequestBody
 
 /** 探针通信异常分类，UI 据此给出可读提示。 */
 sealed class ProbeException(message: String) : Exception(message) {
@@ -78,27 +79,44 @@ class ProbeClient(
     private val json = Json { ignoreUnknownKeys = true; isLenient = true; coerceInputValues = true }
 
     private val client: OkHttpClient by lazy {
-        val builder = OkHttpClient.Builder()
-            .connectTimeout(8, java.util.concurrent.TimeUnit.SECONDS)
-            .readTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
-            .writeTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
-            .callTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
-            .protocols(listOf(Protocol.HTTP_1_1))
-        if (useTls) {
-            val tm: X509TrustManager? = when {
-                !fingerprint.isNullOrBlank() -> PinnedTrustManager(fingerprint)
-                allowInsecure -> InsecureTrustManager()
-                else -> null
+        sharedClient(useTls, fingerprint, allowInsecure)
+    }
+
+    companion object {
+        private const val MAX_APK_BYTES = 300L * 1024 * 1024
+
+        /**
+         * 按信任配置复用 OkHttpClient：轮询期间避免反复创建连接池与线程。
+         * Token/主机在请求层携带，不影响客户端复用。
+         */
+        private val sharedClients = java.util.concurrent.ConcurrentHashMap<String, OkHttpClient>()
+
+        private fun sharedClient(useTls: Boolean, fingerprint: String?, allowInsecure: Boolean): OkHttpClient =
+            sharedClients.getOrPut("$useTls|${fingerprint ?: "-"}|$allowInsecure") { buildClient(useTls, fingerprint, allowInsecure) }
+
+        private fun buildClient(useTls: Boolean, fingerprint: String?, allowInsecure: Boolean): OkHttpClient {
+            val builder = OkHttpClient.Builder()
+                .connectTimeout(8, java.util.concurrent.TimeUnit.SECONDS)
+                .readTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+                .writeTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
+                .callTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
+                .protocols(listOf(Protocol.HTTP_1_1))
+            if (useTls) {
+                val tm: X509TrustManager? = when {
+                    !fingerprint.isNullOrBlank() -> PinnedTrustManager(fingerprint)
+                    allowInsecure -> InsecureTrustManager()
+                    else -> null
+                }
+                if (tm != null) {
+                    val ctx = SSLContext.getInstance("TLS")
+                    ctx.init(null, arrayOf<TrustManager>(tm), SecureRandom())
+                    builder.sslSocketFactory(ctx.socketFactory, tm)
+                    // 身份由指纹断言（自签证书 CN 不含 IP），显式跳过主机名校验
+                    builder.hostnameVerifier { _, _ -> true }
+                }
             }
-            if (tm != null) {
-                val ctx = SSLContext.getInstance("TLS")
-                ctx.init(null, arrayOf<TrustManager>(tm), SecureRandom())
-                builder.sslSocketFactory(ctx.socketFactory, tm)
-                // 身份由指纹断言（自签证书 CN 不含 IP），显式跳过主机名校验
-                builder.hostnameVerifier { _, _ -> true }
-            }
+            return builder.build()
         }
-        builder.build()
     }
 
     private fun url(path: String): String {
@@ -155,7 +173,7 @@ class ProbeClient(
         val request = Request.Builder()
             .url(url(path))
             .header("Authorization", "Bearer $token")
-            .post(okhttp3.RequestBody.create("application/json; charset=utf-8".toMediaTypeOrNull(), body))
+            .post(body.toRequestBody("application/json; charset=utf-8".toMediaTypeOrNull()))
             .build()
         try {
             client.newCall(request).execute()

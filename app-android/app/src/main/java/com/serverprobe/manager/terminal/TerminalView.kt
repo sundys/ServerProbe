@@ -5,6 +5,7 @@ import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.RectF
 import android.graphics.Typeface
+import android.util.TypedValue
 import android.text.InputType
 import android.util.AttributeSet
 import android.view.KeyEvent
@@ -29,7 +30,7 @@ class TerminalView @JvmOverloads constructor(
 
     private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         typeface = Typeface.MONOSPACE
-        textSize = 14f * resources.displayMetrics.scaledDensity
+        textSize = spToPx(14f)
     }
     private val bgPaint = Paint()
     private val cursorPaint = Paint().apply { style = Paint.Style.FILL }
@@ -41,6 +42,7 @@ class TerminalView @JvmOverloads constructor(
 
     private val blinkHandler = object : android.os.Handler(android.os.Looper.getMainLooper()) {}
     private var cursorOn = true
+    private val runBuilder = StringBuilder(128)
 
     init {
         isFocusable = true
@@ -49,6 +51,9 @@ class TerminalView @JvmOverloads constructor(
         textBaseline = -textPaint.fontMetrics.ascent
         setOnClickListener { showKeyboard() }
     }
+
+    private fun spToPx(sp: Float): Float =
+        TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, sp, resources.displayMetrics)
 
     fun setTextSizePx(px: Float) {
         textPaint.textSize = px
@@ -102,9 +107,9 @@ class TerminalView @JvmOverloads constructor(
                 }
                 textPaint.isFakeBoldText = (attr and 1) != 0
                 textPaint.isUnderlineText = (attr and 2) != 0
-                var run = ""
-                for (i in col until end) run += emu.charAt(row, i)
-                if (run.isNotBlank()) canvas.drawText(run, x, y + textBaseline, textPaint)
+                runBuilder.setLength(0)
+                for (i in col until end) runBuilder.append(emu.charAt(row, i))
+                if (runBuilder.isNotBlank()) canvas.drawText(runBuilder, 0, runBuilder.length, x, y + textBaseline, textPaint)
                 x += (end - col) * cellW
                 col = end
             }

@@ -220,7 +220,7 @@ fun AddProbeScreen(
                             trailingIcon = { Text("▾") },
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .menuAnchor(),
+                                .menuAnchor(androidx.compose.material3.MenuAnchorType.PrimaryNotEditable),
                         )
                         ExposedDropdownMenu(expanded = sshKeyMenu, onDismissRequest = { sshKeyMenu = false }) {
                             sshHosts.forEach { ssh ->
