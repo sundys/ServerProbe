@@ -1,18 +1,24 @@
 package com.serverprobe.manager.ui.ssh
 
 import android.app.Application
+import android.content.Context
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.serverprobe.manager.App
+import com.serverprobe.manager.data.crypto.KeystoreCipher
 import com.serverprobe.manager.data.db.AUTH_KEY
 import com.serverprobe.manager.data.db.AUTH_PASSWORD
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 
 class SshFormViewModel(app: Application, private val editId: Long) : AndroidViewModel(app) {
 
+    @Serializable
     data class Form(
         val alias: String = "",
         val host: String = "",
@@ -34,6 +40,12 @@ class SshFormViewModel(app: Application, private val editId: Long) : AndroidView
     val saved = MutableStateFlow(false)
 
     private val mgr = App.get(app)
+    private val prefs = app.getSharedPreferences("ssh_form_draft", Context.MODE_PRIVATE)
+    private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
+
+    init {
+        if (editId > 0) load() else restoreDraft()
+    }
 
     fun load() {
         viewModelScope.launch {
@@ -52,6 +64,31 @@ class SshFormViewModel(app: Application, private val editId: Long) : AndroidView
 
     fun update(transform: (Form) -> Form) {
         form.value = transform(form.value)
+        // 新建场景持久化草稿：即使 ROM 在打开系统文件选择器期间查杀进程，回到应用也能恢复
+        if (!form.value.isEdit) persistDraft(form.value)
+    }
+
+    private fun persistDraft(f: Form) {
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching {
+                prefs.edit()
+                    .putString("draft", KeystoreCipher.encrypt(json.encodeToString(f)))
+                    .apply()
+            }
+        }
+    }
+
+    private fun restoreDraft() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val encoded = prefs.getString("draft", null) ?: return@launch
+            val draft = runCatching { json.decodeFromString<Form>(KeystoreCipher.decrypt(encoded)) }
+                .getOrNull() ?: return@launch
+            form.value = draft
+        }
+    }
+
+    private fun clearDraft() {
+        prefs.edit().remove("draft").apply()
     }
 
     fun test() {
@@ -104,6 +141,7 @@ class SshFormViewModel(app: Application, private val editId: Long) : AndroidView
                     keyPassphrase = if (f.passphraseChanged || !f.isEdit) f.keyPassphrase.takeIf { it.isNotEmpty() } else null,
                     hostKeyFingerprint = existing?.hostKeyFingerprint,
                 )
+                clearDraft()
                 saved.value = true
             } catch (e: Exception) {
                 testResult.value = "保存失败: ${e.message}"
