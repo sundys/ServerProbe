@@ -1,4 +1,29 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">云枢</string>
+
+    <!-- 远程（Zrmt 集成） -->
+    <string name="title_add">添加链接</string>
+    <string name="title_edit">编辑链接</string>
+    <string name="save">保存</string>
+    <string name="update">更新</string>
+    <string name="parse_failed">无法识别，请粘贴完整的 zcode 远程链接</string>
+    <string name="parse_ok">已识别，可保存</string>
+    <string name="version_unknown">未知版本</string>
+    <string name="version_badge">V%1$s</string>
+    <string name="saved_toast">已保存「%1$s」</string>
+    <string name="link_missing">链接不存在</string>
+    <string name="load_failed">网络连接失败</string>
+    <string name="retry">重试</string>
+    <string name="menu_copy">复制当前链接</string>
+    <string name="menu_desktop_ua">切换电脑版页面</string>
+    <string name="menu_mobile_ua">切换手机版页面</string>
+    <string name="menu_open_browser">在浏览器打开</string>
+    <string name="menu_close">关闭页面</string>
+    <string name="copied">已复制</string>
+    <string name="no_browser">未找到可用的浏览器</string>
+    <string name="no_file_manager">未找到可用的文件选择器</string>
+    <string name="perm_denied">权限被拒绝，摄像头/麦克风功能不可用</string>
+    <string name="last_opened">上次打开 %1$s</string>
+    <string name="added_at">添加于 %1$s</string>
 </resources>

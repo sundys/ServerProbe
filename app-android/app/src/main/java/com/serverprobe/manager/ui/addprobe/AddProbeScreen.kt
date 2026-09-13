@@ -142,11 +142,6 @@ fun AddProbeScreen(
                 label = { Text(if (form.isEdit && !form.tokenChanged) "Token（未输入则保留原值）" else "Token（serverprobe init 输出）") },
                 singleLine = true,
                 visualTransformation = PasswordVisualTransformation(),
-                trailingIcon = {
-                    TextButton(onClick = { vm.update { f -> f.copy(token = java.util.UUID.randomUUID().toString().replace("-", "") + java.util.UUID.randomUUID().toString().replace("-", "")) } }) {
-                        Text("生成", style = MaterialTheme.typography.labelMedium)
-                    }
-                },
                 modifier = Modifier.fillMaxWidth(),
             )
 

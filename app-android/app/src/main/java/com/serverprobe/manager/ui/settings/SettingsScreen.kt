@@ -58,7 +58,8 @@ import com.serverprobe.manager.update.UpdateManager
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
-    onBack: () -> Unit,
+    showBack: Boolean = true,
+    onBack: () -> Unit = {},
     vm: SettingsViewModel = viewModel(),
 ) {
     val displayMode by vm.displayMode.collectAsState()
@@ -100,7 +101,9 @@ fun SettingsScreen(
         topBar = {
             TopAppBar(
                 title = { Text("设置", fontWeight = FontWeight.Bold) },
-                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回") } },
+                navigationIcon = {
+                    if (showBack) IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回") }
+                },
             )
         },
     ) { padding ->

@@ -31,14 +31,6 @@ object SshKeyLoader {
         else -> "自动识别"
     }
 
-    fun keyTypeName(key: java.security.PrivateKey): String = when (key.algorithm.uppercase()) {
-        "RSA" -> "RSA"
-        "EC" -> "ECDSA"
-        "EDDSA" -> "Ed25519"
-        "DSA" -> "DSA"
-        else -> key.algorithm
-    }
-
     fun load(content: String, passphrase: String?): Result<FileKeyProvider> {
         val candidates: List<FileKeyProvider> = when {
             content.contains("PuTTY-User-Key-File") -> listOf(PuTTYKeyFile())

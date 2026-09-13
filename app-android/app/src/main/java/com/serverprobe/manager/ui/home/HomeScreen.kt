@@ -6,6 +6,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -16,7 +17,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
@@ -26,7 +26,6 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material3.Card
@@ -34,8 +33,6 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ElevatedCard
-import androidx.compose.material3.ExtendedFloatingActionButton
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -44,13 +41,11 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -79,69 +74,37 @@ fun HomeScreen(
     onEditProbe: (Long) -> Unit,
     onEditSsh: (Long) -> Unit,
     onTerminal: (Long) -> Unit,
-    onSettings: () -> Unit,
     vm: HomeViewModel = viewModel(),
 ) {
     val hosts by vm.hosts.collectAsState()
     val runtime by vm.runtime.collectAsState()
     val sshHosts by vm.sshHosts.collectAsState()
 
-    var fabMenu by remember { mutableStateOf(false) }
+    var addMenu by remember { mutableStateOf(false) }
     var deleteProbe by remember { mutableStateOf<ProbeHostEntity?>(null) }
     var deleteSsh by remember { mutableStateOf<com.serverprobe.manager.data.db.SshHostEntity?>(null) }
-
-    // 上滑隐藏、下滑显示的悬浮按钮
-    val listState = rememberLazyListState()
-    var fabVisible by remember { mutableStateOf(true) }
-    LaunchedEffect(listState) {
-        var lastIndex = 0
-        var lastOffset = 0
-        snapshotFlow { listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset }
-            .collect { (index, offset) ->
-                when {
-                    index > lastIndex || (index == lastIndex && offset > lastOffset + 2) -> fabVisible = false
-                    index < lastIndex || (index == lastIndex && offset < lastOffset - 2) -> fabVisible = true
-                }
-                lastIndex = index
-                lastOffset = offset
-            }
-    }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("服务探针", fontWeight = FontWeight.Bold) },
+                title = { Text("管理", fontWeight = FontWeight.Bold) },
                 actions = {
-                    IconButton(onClick = onSettings) { Icon(Icons.Default.Settings, "设置") }
+                    // 右上角「＋」添加菜单（原右下角悬浮按钮）
+                    Box {
+                        IconButton(onClick = { addMenu = true }) { Icon(Icons.Default.Add, "添加") }
+                        DropdownMenu(expanded = addMenu, onDismissRequest = { addMenu = false }) {
+                            DropdownMenuItem(
+                                text = { Text("添加探针主机") },
+                                onClick = { addMenu = false; onAddProbe() },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("添加 SSH 主机") },
+                                onClick = { addMenu = false; onAddSsh() },
+                            )
+                        }
+                    }
                 },
             )
-        },
-        floatingActionButton = {
-            Box {
-                androidx.compose.animation.AnimatedVisibility(
-                    visible = fabVisible,
-                    enter = androidx.compose.animation.scaleIn() + androidx.compose.animation.fadeIn(),
-                    exit = androidx.compose.animation.scaleOut() + androidx.compose.animation.fadeOut(),
-                ) {
-                    FloatingActionButton(
-                        onClick = { fabMenu = true },
-                        shape = CircleShape,
-                        containerColor = MaterialTheme.colorScheme.primary,
-                    ) {
-                        Icon(Icons.Default.Add, contentDescription = "添加")
-                    }
-                }
-                DropdownMenu(expanded = fabMenu, onDismissRequest = { fabMenu = false }) {
-                    DropdownMenuItem(
-                        text = { Text("添加探针主机") },
-                        onClick = { fabMenu = false; onAddProbe() },
-                    )
-                    DropdownMenuItem(
-                        text = { Text("添加 SSH 主机") },
-                        onClick = { fabMenu = false; onAddSsh() },
-                    )
-                }
-            }
         },
     ) { padding ->
         Column(
@@ -186,13 +149,13 @@ fun HomeScreen(
 
             if (sshHosts.isEmpty()) {
                 Text(
-                    "还没有 SSH 主机，点击右上角「添加」保存服务器登录信息，点击即可一键连接终端。",
+                    "还没有 SSH 主机，点击右上角「＋」保存服务器登录信息，点击即可一键连接终端。",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(horizontal = 20.dp),
                 )
             } else {
-                LazyColumn(state = listState, modifier = Modifier.weight(1f)) {
+                LazyColumn(modifier = Modifier.weight(1f)) {
                     items(sshHosts, key = { it.id }) { ssh ->
                         SshQuickItem(
                             ssh = ssh,
@@ -201,7 +164,7 @@ fun HomeScreen(
                             onDelete = { deleteSsh = ssh },
                         )
                     }
-                    item { Spacer(Modifier.height(88.dp)) }
+                    item { Spacer(Modifier.height(16.dp)) }
                 }
             }
         }
@@ -268,7 +231,7 @@ private fun HostCardPager(
         HorizontalPager(
             state = pagerState,
             pageSpacing = 12.dp,
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 20.dp),
+            contentPadding = PaddingValues(horizontal = 20.dp),
         ) { index ->
             val host = hosts[index]
             HostCard(
