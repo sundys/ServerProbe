@@ -13,15 +13,24 @@ import (
 
 // 非 Linux 平台（如开发机 Windows）使用演示数据，便于开发与联调 App。
 type Collector struct {
-	mu      sync.Mutex
-	info    HostInfo
-	cache   Status
-	started time.Time
-	base    time.Time
+	mu          sync.Mutex
+	info        HostInfo
+	cache       Status
+	started     time.Time
+	base        time.Time
+	traffic     TrafficState
+	trafficMu   sync.Mutex
+	trafficPath string
+	demoRx      uint64
+	demoTx      uint64
 }
 
-func NewCollector() *Collector {
+func NewCollector(dataDir string) *Collector {
 	c := &Collector{started: time.Now(), base: time.Now().Add(-72 * time.Hour)}
+	if dataDir != "" {
+		c.trafficPath = dataDir + string(os.PathSeparator) + "traffic.json"
+		c.traffic = *loadTraffic(c.trafficPath)
+	}
 	h, _ := os.Hostname()
 	c.info = HostInfo{
 		Hostname:     h,
@@ -94,9 +103,30 @@ func (c *Collector) Refresh() {
 		Time: time.Now().Format(time.RFC3339),
 	}
 	st.MemAvailable = st.MemTotal - st.MemUsed
+
+	// 演示流量：按当前速率×2s 推进 日/月/总 统计
+	c.demoRx += uint64(rx * 2)
+	c.demoTx += uint64(tx * 2)
+	c.trafficMu.Lock()
+	c.traffic.ApplyUpdate(time.Now(), c.demoRx, c.demoTx)
+	day, month, total := c.traffic.Snapshot()
+	c.trafficMu.Unlock()
+	st.NetDay, st.NetMonth, st.NetTotal = day, month, total
+
 	c.mu.Lock()
 	c.cache = st
 	c.mu.Unlock()
+}
+
+// PersistTraffic 演示模式：数据目录为空时跳过落盘。
+func (c *Collector) PersistTraffic() {
+	if c.trafficPath == "" {
+		return
+	}
+	c.trafficMu.Lock()
+	s := c.traffic
+	c.trafficMu.Unlock()
+	_ = saveTraffic(c.trafficPath, &s)
 }
 
 func clamp(v, lo, hi float64) float64 {

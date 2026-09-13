@@ -37,6 +37,15 @@ data class NetRate(
     @SerialName("tx_total_bytes") val txTotalBytes: Long = 0,
 )
 
+/** 流量用量（字节） */
+@Serializable
+data class TrafficUsage(
+    val rx: Long = 0,
+    val tx: Long = 0,
+) {
+    val total: Long get() = rx + tx
+}
+
 @Serializable
 data class ProbeStatus(
     val hostname: String = "",
@@ -62,6 +71,9 @@ data class ProbeStatus(
     @SerialName("uptime_sec") val uptimeSec: Double = 0.0,
     val disks: List<DiskInfo> = emptyList(),
     val net: List<NetRate> = emptyList(),
+    @SerialName("net_day") val netDay: TrafficUsage = TrafficUsage(),
+    @SerialName("net_month") val netMonth: TrafficUsage = TrafficUsage(),
+    @SerialName("net_total") val netTotal: TrafficUsage = TrafficUsage(),
     val time: String = "",
     val demo: Boolean = false,
 )

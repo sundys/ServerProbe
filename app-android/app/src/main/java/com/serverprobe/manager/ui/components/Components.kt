@@ -64,6 +64,12 @@ fun formatUptime(seconds: Double): String {
 
 fun formatPct(p: Double): String = "%.1f%%".format(p)
 
+/** 流量统计固定以 MB 显示 */
+fun formatTrafficMB(bytes: Long): String {
+    if (bytes <= 0) return "0.0 MB"
+    return "%.1f MB".format(bytes / 1024.0 / 1024.0)
+}
+
 // ---- 通用小组件 ----
 
 @Composable

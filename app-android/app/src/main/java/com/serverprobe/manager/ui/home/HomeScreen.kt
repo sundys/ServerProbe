@@ -63,6 +63,7 @@ import com.serverprobe.manager.ui.components.StatusDot
 import com.serverprobe.manager.ui.components.formatBps
 import com.serverprobe.manager.ui.components.formatBytes
 import com.serverprobe.manager.ui.components.formatPct
+import com.serverprobe.manager.ui.components.formatTrafficMB
 import com.serverprobe.manager.ui.components.formatUptime
 
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
@@ -392,6 +393,23 @@ private fun HostCard(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+            }
+
+            // 流量统计（探针持久化累计；旧版探针无此数据时隐藏）
+            st?.let { s ->
+                if (s.netDay.total + s.netMonth.total + s.netTotal.total > 0) {
+                    Text(
+                        buildString {
+                            append("流量 今日 ↓${formatTrafficMB(s.netDay.rx)} ↑${formatTrafficMB(s.netDay.tx)}")
+                            append(" · 本月 ${formatTrafficMB(s.netMonth.total)}")
+                            append(" · 总 ${formatTrafficMB(s.netTotal.total)}")
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
 
             rt?.error?.let { err ->
