@@ -28,6 +28,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
@@ -241,6 +242,9 @@ fun SettingsScreen(
                         textDecoration = TextDecoration.Underline,
                     )
                 }
+                OutlinedButton(onClick = { copyDiagnostics(ctx) }, modifier = Modifier.fillMaxWidth()) {
+                    Text("复制诊断日志（用于反馈问题）")
+                }
             }
             Spacer(Modifier.height(20.dp))
         }
@@ -334,6 +338,31 @@ private fun Section(title: String, content: @Composable androidx.compose.foundat
 private fun openUrl(context: android.content.Context, url: String) {
     runCatching {
         context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url)))
+    }
+}
+
+/** 汇总设备信息与最近崩溃堆栈到剪贴板，便于反馈问题定位。 */
+private fun copyDiagnostics(context: android.content.Context) {
+    runCatching {
+        val pm = context.packageManager
+        val version = runCatching {
+            pm.getPackageInfo(context.packageName, 0).versionName ?: "?"
+        }.getOrDefault("?")
+        val sb = StringBuilder()
+        sb.appendLine("App: 云枢 Remoto v$version (${context.packageName})")
+        sb.appendLine("Android: ${android.os.Build.VERSION.RELEASE} (API ${android.os.Build.VERSION.SDK_INT})")
+        sb.appendLine("Device: ${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}")
+        sb.appendLine("---- 最近崩溃 ----")
+        val crash = runCatching {
+            java.io.File(context.filesDir, "crash-report.txt").takeIf { it.exists() }?.readText()
+        }.getOrNull()
+        sb.append(crash?.takeLast(6000) ?: "（无崩溃记录）")
+        val cm = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE)
+            as android.content.ClipboardManager
+        cm.setPrimaryClip(android.content.ClipData.newPlainText("remoto-diagnostics", sb.toString()))
+        Toast.makeText(context, "诊断日志已复制到剪贴板", Toast.LENGTH_SHORT).show()
+    }.onFailure {
+        Toast.makeText(context, "复制失败: ${it.message}", Toast.LENGTH_SHORT).show()
     }
 }
 

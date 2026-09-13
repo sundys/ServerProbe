@@ -38,6 +38,22 @@ class App : Application() {
         probeRepo = ProbeRepository(db.probeHostDao(), sshRepo, settings, appScope)
         backupManager = BackupManager(db, settings)
         probeRepo.start()
+        installCrashHook()
+    }
+
+    /** 未捕获异常落盘（最新一次），供设置页「复制诊断日志」取证。 */
+    private fun installCrashHook() {
+        val previous = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { thread, error ->
+            runCatching {
+                val stamp = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.CHINA)
+                    .format(java.util.Date())
+                java.io.File(filesDir, "crash-report.txt").writeText(
+                    "time: $stamp\nthread: ${thread.name}\n\n${android.util.Log.getStackTraceString(error)}\n",
+                )
+            }
+            previous?.uncaughtException(thread, error)
+        }
     }
 
     companion object {

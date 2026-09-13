@@ -35,6 +35,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.foundation.text.KeyboardOptions
@@ -64,6 +65,18 @@ fun SshFormScreen(
             }.getOrNull()?.let { vm.update { f -> f.copy(privateKey = it, privateKeyChanged = true) } }
                 ?: Toast.makeText(ctx, "无法读取所选文件", Toast.LENGTH_SHORT).show()
         }
+    }
+    // 部分精简 ROM 没有“文件选择器”组件，或打开期间杀后台；启动失败时引导改用粘贴输入
+    val launchKeyPicker = {
+        runCatching { keyPicker.launch("*/*") }
+            .onFailure {
+                Toast.makeText(
+                    ctx,
+                    "无法打开系统文件选择器（${it.javaClass.simpleName}），请改用下方“粘贴私钥内容”",
+                    Toast.LENGTH_LONG,
+                ).show()
+            }
+        Unit
     }
 
     LaunchedEffect(Unit) { if (editId > 0) vm.load() }
@@ -146,19 +159,35 @@ fun SshFormScreen(
                 )
             } else {
                 OutlinedButton(
-                    onClick = { keyPicker.launch("*/*") },
+                    onClick = launchKeyPicker,
                     modifier = Modifier.fillMaxWidth(),
                 ) { Text("从文件选择私钥（OpenSSH / PEM PKCS#1 / PKCS#8 / PuTTY PPK）") }
                 val pk = form.privateKey
-                if (pk != null) {
+                OutlinedTextField(
+                    value = pk ?: "",
+                    onValueChange = { v ->
+                        vm.update { f -> f.copy(privateKey = v.takeIf { it.isNotBlank() }, privateKeyChanged = true) }
+                    },
+                    label = { Text("或直接粘贴私钥内容（无需选择文件）") },
+                    placeholder = { Text("-----BEGIN OPENSSH PRIVATE KEY-----", style = MaterialTheme.typography.bodySmall) },
+                    supportingText = {
+                        Text(
+                            if (pk != null) "已识别格式：${SshKeyLoader.detectFormat(pk)} · ${pk.length} 字符"
+                            else "支持 OpenSSH 新格式 / PEM PKCS#1 / PKCS#8 / PuTTY PPK，粘贴后自动识别",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    },
+                    minLines = 3,
+                    maxLines = 8,
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Ascii,
+                        capitalization = KeyboardCapitalization.None,
+                    ),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                if (pk == null && form.isEdit) {
                     Text(
-                        "已载入私钥：${SshKeyLoader.detectFormat(pk)} · ${pk.length} 字符",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
-                } else if (form.isEdit) {
-                    Text(
-                        "已保存私钥（未重新选择则保留原值）",
+                        "已保存私钥（未重新输入则保留原值）",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )

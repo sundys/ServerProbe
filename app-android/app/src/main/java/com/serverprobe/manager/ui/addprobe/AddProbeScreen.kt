@@ -44,6 +44,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -77,6 +78,18 @@ fun AddProbeScreen(
                 vm.update { f -> f.copy(sshPrivateKey = text, sshAuthType = AUTH_KEY) }
             } ?: Toast.makeText(ctx, "无法读取所选文件", Toast.LENGTH_SHORT).show()
         }
+    }
+    // 选择器启动失败（无组件/ROM限制）时提示改用粘贴输入
+    val launchKeyPicker = {
+        runCatching { keyPicker.launch("*/*") }
+            .onFailure {
+                Toast.makeText(
+                    ctx,
+                    "无法打开系统文件选择器（${it.javaClass.simpleName}），请改用下方“粘贴私钥内容”",
+                    Toast.LENGTH_LONG,
+                ).show()
+            }
+        Unit
     }
 
     LaunchedEffect(saved) { if (saved) onDone() }
@@ -264,9 +277,23 @@ fun AddProbeScreen(
                             modifier = Modifier.fillMaxWidth(),
                         )
                     } else {
-                        OutlinedButton(onClick = { keyPicker.launch("*/*") }, modifier = Modifier.fillMaxWidth()) {
+                        OutlinedButton(onClick = launchKeyPicker, modifier = Modifier.fillMaxWidth()) {
                             Text(form.sshPrivateKey?.let { "已选择私钥（点击更换）" } ?: "选择私钥文件")
                         }
+                        OutlinedTextField(
+                            value = form.sshPrivateKey ?: "",
+                            onValueChange = { v ->
+                                vm.update { f -> f.copy(sshPrivateKey = v.takeIf { it.isNotBlank() }, sshAuthType = AUTH_KEY) }
+                            },
+                            label = { Text("或直接粘贴私钥内容（无需选择文件）") },
+                            minLines = 3,
+                            maxLines = 8,
+                            keyboardOptions = KeyboardOptions(
+                                keyboardType = KeyboardType.Ascii,
+                                capitalization = KeyboardCapitalization.None,
+                            ),
+                            modifier = Modifier.fillMaxWidth(),
+                        )
                     }
                     OutlinedTextField(
                         value = form.sshKeyPassphrase,
