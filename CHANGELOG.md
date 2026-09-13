@@ -1,5 +1,24 @@
 # 更新摘要 / Changelog
 
+## v1.1.6
+
+**整体优化与安全加固（代码审计轮）**
+
+安全：
+- 远程 WebView 禁用混合内容（https 页面不再加载 http 子资源）
+- 远程页外链跳转仅放行 http/https，防止远程页面借 `intent://` 触发任意应用组件
+- 应用内更新的 APK 下载增加 300MB 大小上限，异常通道不再可能写满磁盘
+
+性能：
+- SSH 终端输出**批量合并**处理：`cat` 大文件等高吞吐场景下解析与重绘次数大幅减少，滚动更流畅
+- 终端绘制改用 StringBuilder 复用（原每帧每行字符串拼接为 O(n²)）
+- 探针轮询的 OkHttpClient **按信任配置全局复用**，不再每轮新建连接池与线程
+- 终端页键盘拉起仅触发一次（原每次输出重绘都会调用系统接口）
+
+代码质量：
+- 迁移全部弃用 API 至新版本：scaledDensity→TypedValue、onBackPressed→ predictive back 回调、RequestBody.create→扩展函数、Room destructiveMigration 新签名、menuAnchor 新重载
+- 全量编译零警告、零未使用代码
+
 ## v1.1.5
 
 **修复**

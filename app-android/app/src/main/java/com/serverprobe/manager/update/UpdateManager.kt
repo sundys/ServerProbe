@@ -62,6 +62,9 @@ object UpdateManager {
 
     private val json = Json { ignoreUnknownKeys = true }
 
+    /** APK 大小上限：异常通道返回超大响应时中断，避免写满磁盘 */
+    private const val MAX_APK_BYTES = 300L * 1024 * 1024
+
     private val http = OkHttpClient.Builder()
         .connectTimeout(10, TimeUnit.SECONDS)
         .readTimeout(20, TimeUnit.SECONDS)
@@ -123,6 +126,7 @@ object UpdateManager {
                                 if (!resp.isSuccessful) throw IOException("HTTP ${resp.code}")
                                 val body = resp.body ?: throw IOException("empty body")
                                 val total = body.contentLength()
+                                if (total > MAX_APK_BYTES) throw IOException("APK 超过大小上限")
                                 var received = 0L
                                 var lastNotified = 0L
                                 val buf = ByteArray(32 * 1024)
@@ -130,8 +134,9 @@ object UpdateManager {
                                     while (true) {
                                         val n = input.read(buf)
                                         if (n < 0) break
-                                        out.write(buf, 0, n)
                                         received += n
+                                        if (received > MAX_APK_BYTES) throw IOException("APK 超过大小上限")
+                                        out.write(buf, 0, n)
                                         // 至少 256KB 或完成时回调一次，避免过度刷新 UI
                                         if (received - lastNotified >= 256 * 1024 || received == total) {
                                             lastNotified = received

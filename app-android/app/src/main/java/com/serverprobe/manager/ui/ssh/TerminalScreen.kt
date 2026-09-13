@@ -41,6 +41,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import android.util.TypedValue
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.serverprobe.manager.terminal.TerminalView
@@ -119,7 +120,7 @@ fun TerminalScreen(
                 AndroidView(
                     factory = { context ->
                         TerminalView(context).apply {
-                            setTextSizePx(fontSizeSp * context.resources.displayMetrics.scaledDensity)
+                            setTextSizePx(TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, fontSizeSp, context.resources.displayMetrics))
                             onData = { vm.write(it) }
                             onFirstLayout = { cols, rows -> vm.start(sshId, cols, rows) }
                             terminalView = this
@@ -127,12 +128,6 @@ fun TerminalScreen(
                     },
                     update = { view ->
                         view.emulator = emu
-                        view.invalidate()
-                        if (emu != null) {
-                            view.requestFocus()
-                            val imm = ctx.getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as InputMethodManager
-                            imm.showSoftInput(view, 0)
-                        }
                     },
                     modifier = Modifier
                         .fillMaxSize()
@@ -165,11 +160,11 @@ fun TerminalScreen(
                 ControlKey("-") { terminalView?.send("-") }
                 ControlKey("A−") {
                     fontSizeSp = (fontSizeSp - 1f).coerceAtLeast(8f)
-                    terminalView?.setTextSizePx(fontSizeSp * ctx.resources.displayMetrics.scaledDensity)
+                    terminalView?.setTextSizePx(TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, fontSizeSp, ctx.resources.displayMetrics))
                 }
                 ControlKey("A+") {
                     fontSizeSp = (fontSizeSp + 1f).coerceAtMost(28f)
-                    terminalView?.setTextSizePx(fontSizeSp * ctx.resources.displayMetrics.scaledDensity)
+                    terminalView?.setTextSizePx(TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, fontSizeSp, ctx.resources.displayMetrics))
                 }
                 ControlKey("粘贴") {
                     val cm = ctx.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
@@ -197,7 +192,16 @@ fun TerminalScreen(
         )
     }
 
-    // 有数据更新时重绘
+    // 连接建立后聚焦终端并拉起软键盘（仅一次，不随输出重绘重复触发）
+    LaunchedEffect(emu) {
+        if (emu != null) {
+            terminalView?.requestFocus()
+            val imm = ctx.getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as InputMethodManager
+            imm.showSoftInput(terminalView, 0)
+        }
+    }
+
+    // 每批输出到达后重绘一次
     LaunchedEffect(dataVersion) {
         terminalView?.invalidate()
     }

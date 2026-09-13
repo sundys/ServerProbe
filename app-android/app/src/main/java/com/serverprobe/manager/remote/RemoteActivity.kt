@@ -1,6 +1,7 @@
 package com.serverprobe.manager.remote
 
 import android.annotation.SuppressLint
+import androidx.activity.OnBackPressedCallback
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import com.serverprobe.manager.R
@@ -53,6 +54,21 @@ class RemoteActivity : androidx.fragment.app.FragmentActivity() {
         setContentView(R.layout.activity_remote)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         applySystemBarInsets(findViewById(R.id.rootRemote))
+
+        onBackPressedDispatcher.addCallback(this, object : androidx.activity.OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                when {
+                    customView != null ->
+                        (webView.webChromeClient as? WebChromeClient)?.onHideCustomView()
+                    webView.canGoBack() -> webView.goBack()
+                    else -> {
+                        isEnabled = false
+                        onBackPressedDispatcher.onBackPressed()
+                        isEnabled = true
+                    }
+                }
+            }
+        })
 
         val l = readLink(intent)
         if (l == null) {
@@ -131,7 +147,7 @@ class RemoteActivity : androidx.fragment.app.FragmentActivity() {
             javaScriptCanOpenWindowsAutomatically = true
             setSupportMultipleWindows(false)
             cacheMode = WebSettings.LOAD_DEFAULT
-            mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
+            mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
             allowFileAccess = false
             allowContentAccess = true
             textZoom = 100
@@ -390,18 +406,13 @@ class RemoteActivity : androidx.fragment.app.FragmentActivity() {
     }
 
     private fun openExternal(uri: Uri) {
-        try {
-            startActivity(Intent(Intent.ACTION_VIEW, uri))
-        } catch (_: ActivityNotFoundException) {
-            Toast.makeText(this, R.string.no_browser, Toast.LENGTH_SHORT).show()
-        }
-    }
-
-    override fun onBackPressed() {
-        when {
-            customView != null -> (webView.webChromeClient as? WebChromeClient)?.onHideCustomView()
-            webView.canGoBack() -> webView.goBack()
-            else -> super.onBackPressed()
+        // 仅放行网页链接，防止远程页面借 intent:// 触发任意组件调用
+        when (uri.scheme?.lowercase()) {
+            "http", "https" -> try {
+                startActivity(Intent(Intent.ACTION_VIEW, uri))
+            } catch (_: ActivityNotFoundException) {
+                Toast.makeText(this, R.string.no_browser, Toast.LENGTH_SHORT).show()
+            }
         }
     }
 
