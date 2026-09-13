@@ -41,17 +41,11 @@ class App : Application() {
         installCrashHook()
     }
 
-    /** 未捕获异常落盘（最新一次），供设置页「复制诊断日志」取证。 */
+    /** 未捕获异常落盘（供设置页「复制诊断日志」取证），随后交还系统默认处理。 */
     private fun installCrashHook() {
         val previous = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, error ->
-            runCatching {
-                val stamp = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.CHINA)
-                    .format(java.util.Date())
-                java.io.File(filesDir, "crash-report.txt").writeText(
-                    "time: $stamp\nthread: ${thread.name}\n\n${android.util.Log.getStackTraceString(error)}\n",
-                )
-            }
+            Diagnostics.crash(this, thread.name, android.util.Log.getStackTraceString(error))
             previous?.uncaughtException(thread, error)
         }
     }

@@ -1,8 +1,6 @@
 package com.serverprobe.manager.ui.addprobe
 
 import android.widget.Toast
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -51,6 +49,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.serverprobe.manager.data.db.AUTH_KEY
 import com.serverprobe.manager.data.db.AUTH_PASSWORD
+import com.serverprobe.manager.ui.components.rememberKeyFilePickerLauncher
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -70,27 +69,19 @@ fun AddProbeScreen(
     var showInstallGuide by remember { mutableStateOf(false) }
     var sshKeyMenu by remember { mutableStateOf(false) }
 
-    val keyPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        if (uri != null) {
+    val launchKeyPicker = rememberKeyFilePickerLauncher(
+        onPicked = { uri ->
             runCatching {
                 ctx.contentResolver.openInputStream(uri)?.use { it.readBytes().toString(Charsets.UTF_8) }
             }.getOrNull()?.let { text ->
                 vm.update { f -> f.copy(sshPrivateKey = text, sshAuthType = AUTH_KEY) }
             } ?: Toast.makeText(ctx, "无法读取所选文件", Toast.LENGTH_SHORT).show()
-        }
-    }
-    // 选择器启动失败（无组件/ROM限制）时提示改用粘贴输入
-    val launchKeyPicker = {
-        runCatching { keyPicker.launch("*/*") }
-            .onFailure {
-                Toast.makeText(
-                    ctx,
-                    "无法打开系统文件选择器（${it.javaClass.simpleName}），请改用下方“粘贴私钥内容”",
-                    Toast.LENGTH_LONG,
-                ).show()
-            }
-        Unit
-    }
+        },
+        onAllFailed = { detail ->
+            Toast.makeText(ctx, "所有文件选择通道均不可用，请使用“粘贴私钥内容”", Toast.LENGTH_LONG).show()
+            com.serverprobe.manager.Diagnostics.log(ctx, "key picker fail:\n$detail")
+        },
+    )
 
     LaunchedEffect(saved) { if (saved) onDone() }
     LaunchedEffect(testResult) {
