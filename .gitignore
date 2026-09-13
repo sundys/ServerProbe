@@ -1,0 +1,19 @@
+# Android
+.gradle/
+build/
+app/build/
+local.properties
+*.log
+.idea/
+*.iml
+
+# Go 探针本地构建产物（由 CI 或手动生成）
+probe/dist/
+probe/pkg/
+probe/serverprobe/
+probe/smoke.exe
+probe/init.out
+
+# 系统杂项
+.DS_Store
+Thumbs.db
