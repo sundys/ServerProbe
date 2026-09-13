@@ -1,6 +1,9 @@
 package com.serverprobe.manager.remote
 
 import android.app.Activity
+import android.view.View
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.fragment.app.FragmentActivity
 import android.content.Intent
 import android.os.Bundle
@@ -20,6 +23,7 @@ class EditLinkActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_edit)
+        applySystemBarInsets(findViewById(R.id.rootEdit))
         store = LinkStore(this)
 
         val etUrl = findViewById<EditText>(R.id.etUrl)
@@ -91,6 +95,19 @@ class EditLinkActivity : FragmentActivity() {
         }
 
         revalidate()
+    }
+
+    /** Android 15 强制边到边：内容避让系统状态栏与键盘 */
+    private fun applySystemBarInsets(root: View) {
+        ViewCompat.setOnApplyWindowInsetsListener(root) { v, insets ->
+            val bars = insets.getInsets(
+                WindowInsetsCompat.Type.systemBars()
+                    or WindowInsetsCompat.Type.displayCutout()
+                    or WindowInsetsCompat.Type.ime(),
+            )
+            v.setPadding(bars.left, bars.top, bars.right, bars.bottom)
+            WindowInsetsCompat.CONSUMED
+        }
     }
 
     companion object {

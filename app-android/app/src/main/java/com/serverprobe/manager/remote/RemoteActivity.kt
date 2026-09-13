@@ -1,6 +1,8 @@
 package com.serverprobe.manager.remote
 
 import android.annotation.SuppressLint
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import com.serverprobe.manager.R
 import android.app.Activity
 import android.content.ActivityNotFoundException
@@ -50,6 +52,7 @@ class RemoteActivity : androidx.fragment.app.FragmentActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_remote)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        applySystemBarInsets(findViewById(R.id.rootRemote))
 
         val l = readLink(intent)
         if (l == null) {
@@ -86,6 +89,19 @@ class RemoteActivity : androidx.fragment.app.FragmentActivity() {
             webView.loadUrl(link.url)
         }
         LinkStore(this).markOpened(link.id)
+    }
+
+    /** Android 15 强制边到边：顶栏/底栏避让系统状态栏与键盘 */
+    private fun applySystemBarInsets(root: View) {
+        ViewCompat.setOnApplyWindowInsetsListener(root) { v, insets ->
+            val bars = insets.getInsets(
+                WindowInsetsCompat.Type.systemBars()
+                    or WindowInsetsCompat.Type.displayCutout()
+                    or WindowInsetsCompat.Type.ime(),
+            )
+            v.setPadding(bars.left, bars.top, bars.right, bars.bottom)
+            WindowInsetsCompat.CONSUMED
+        }
     }
 
     private fun readLink(intent: Intent): Link? {
