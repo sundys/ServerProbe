@@ -57,7 +57,7 @@ import com.serverprobe.manager.data.db.AUTH_KEY
 import com.serverprobe.manager.data.db.ProbeHostEntity
 import com.serverprobe.manager.data.repo.ProbeRepository
 import com.serverprobe.manager.ui.components.ConfirmDialog
-import com.serverprobe.manager.ui.components.MeterBar
+import com.serverprobe.manager.ui.components.GaugeIndicator
 import com.serverprobe.manager.ui.components.MiniChart
 import com.serverprobe.manager.ui.components.StatusDot
 import com.serverprobe.manager.ui.components.formatBps
@@ -357,18 +357,18 @@ private fun HostCard(
 
             MiniChart(values = rt?.cpuHistory ?: emptyList())
 
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                MeterBar("CPU", st?.cpuPercent ?: 0.0, Modifier.fillMaxWidth())
-                MeterBar(
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                GaugeIndicator("CPU", st?.cpuPercent ?: 0.0, Modifier.weight(1f))
+                GaugeIndicator(
                     "内存",
                     st?.memPercent ?: 0.0,
-                    Modifier.fillMaxWidth(),
+                    Modifier.weight(1f),
                     detail = st?.let { "${formatBytes(it.memUsedBytes)} / ${formatBytes(it.memTotalBytes)}" },
                 )
-                MeterBar(
+                GaugeIndicator(
                     "磁盘",
                     st?.disks?.maxByOrNull { it.usedPercent }?.usedPercent ?: 0.0,
-                    Modifier.fillMaxWidth(),
+                    Modifier.weight(1f),
                     detail = st?.disks?.maxByOrNull { it.usedPercent }?.let { formatPct(it.usedPercent) },
                 )
             }
@@ -395,20 +395,21 @@ private fun HostCard(
                 )
             }
 
-            // 流量统计（探针持久化累计；旧版探针无此数据时隐藏）
+            // 流量统计（探针持久化累计；旧版探针无此数据时隐藏）：两行展示，不省略
             st?.let { s ->
                 if (s.netDay.total + s.netMonth.total + s.netTotal.total > 0) {
-                    Text(
-                        buildString {
-                            append("流量 今日 ↓${formatTrafficMB(s.netDay.rx)} ↑${formatTrafficMB(s.netDay.tx)}")
-                            append(" · 本月 ${formatTrafficMB(s.netMonth.total)}")
-                            append(" · 总 ${formatTrafficMB(s.netTotal.total)}")
-                        },
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(
+                            "流量 今日 ↓${formatTrafficMB(s.netDay.rx)} ↑${formatTrafficMB(s.netDay.tx)}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Text(
+                            "本月 ${formatTrafficMB(s.netMonth.rx)} ↓ / ${formatTrafficMB(s.netMonth.tx)} ↑ · 总 ${formatTrafficMB(s.netTotal.total)}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
             }
 

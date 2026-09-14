@@ -2,6 +2,7 @@ package com.serverprobe.manager.ui.components
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -17,12 +18,18 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import kotlin.math.max
+import kotlin.math.roundToInt
 
 // ---- 数值格式化 ----
 
@@ -118,19 +125,75 @@ fun MeterBar(
     }
 }
 
-/** CPU 迷你走势图（Sparkline） */
+/** CPU 迷你走势图（Sparkline）：纵轴按窗口内最大值自适应缩放，空闲低占用时波动也可见 */
 @Composable
 fun MiniChart(values: List<Double>, modifier: Modifier = Modifier, color: Color = Color(0xFF17B8A6)) {
     Canvas(modifier = modifier.fillMaxWidth().height(56.dp)) {
         if (values.size < 2) return@Canvas
+        // 动态量程：至少 10%，避免 idle 时曲线贴底看似静止
+        val yMax = maxOf(10.0, (values.maxOrNull() ?: 100.0) * 1.15)
         val stepX = size.width / max(values.size - 1, 1)
         val path = Path()
         values.forEachIndexed { i, v ->
             val x = i * stepX
-            val y = size.height - (v.coerceIn(0.0, 100.0) / 100.0 * size.height).toFloat()
+            val y = size.height - (v.coerceIn(0.0, yMax) / yMax * size.height).toFloat()
             if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
         }
         drawPath(path, color, style = Stroke(width = 3f))
+    }
+}
+
+/** 半圆形进度仪表：弧在上、百分比居中、名称与可选详情在下方 */
+@Composable
+fun GaugeIndicator(
+    label: String,
+    percent: Double,
+    modifier: Modifier = Modifier,
+    detail: String? = null,
+) {
+    val color = when {
+        percent >= 90 -> Color(0xFFFF5A5A)
+        percent >= 70 -> Color(0xFFFFB340)
+        else -> Color(0xFF17B8A6)
+    }
+    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
+        val trackColor = MaterialTheme.colorScheme.surfaceVariant
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(56.dp),
+            contentAlignment = Alignment.BottomCenter,
+        ) {
+            Canvas(Modifier.matchParentSize()) {
+                val stroke = 9.dp.toPx()
+                val diameter = size.width - stroke
+                if (diameter <= 0f) return@Canvas
+                val topLeft = Offset(stroke / 2, stroke / 2)
+                val arcSize = Size(diameter, diameter)
+                drawArc(trackColor, 180f, 180f, false, topLeft, arcSize, style = Stroke(stroke, cap = StrokeCap.Round))
+                val sweep = (180f * (percent / 100.0).toFloat()).coerceIn(0f, 180f)
+                drawArc(color, 180f, sweep, false, topLeft, arcSize, style = Stroke(stroke, cap = StrokeCap.Round))
+            }
+            Text(
+                "${percent.roundToInt()}%",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+            )
+        }
+        Text(
+            label,
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        if (detail != null) {
+            Text(
+                detail,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
     }
 }
 
