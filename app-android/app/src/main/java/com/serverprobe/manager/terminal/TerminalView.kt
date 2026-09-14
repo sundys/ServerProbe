@@ -301,6 +301,14 @@ class TerminalView @JvmOverloads constructor(
             invalidate()
             return true
         }
+        if (event.actionMasked == MotionEvent.ACTION_UP && !selecting) {
+            // 点按：聚焦并拉起输入法（重写后丢失的路径）
+            requestFocus()
+            showKeyboard()
+            // 若正在回看历史，点按回到底部
+            if (scrollRow > 0) scrollRow = 0
+            invalidate()
+        }
         return gestureDetector.onTouchEvent(event) || super.onTouchEvent(event)
     }
 
