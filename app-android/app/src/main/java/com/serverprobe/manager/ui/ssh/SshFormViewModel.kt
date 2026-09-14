@@ -32,6 +32,10 @@ class SshFormViewModel(app: Application, private val editId: Long) : AndroidView
         val passwordChanged: Boolean = false,
         val privateKeyChanged: Boolean = false,
         val passphraseChanged: Boolean = false,
+        /** 编辑模式：已保存私钥的格式与长度摘要（不含明文） */
+        val savedKeyInfo: String? = null,
+        /** 编辑模式：是否已保存密码 */
+        val hasSavedPassword: Boolean = false,
     )
 
     val form = MutableStateFlow(Form())
@@ -50,6 +54,7 @@ class SshFormViewModel(app: Application, private val editId: Long) : AndroidView
     fun load() {
         viewModelScope.launch {
             val e = mgr.sshRepo.byId(editId) ?: return@launch
+            val savedKey = mgr.sshRepo.privateKeyOf(e)
             form.value = Form(
                 alias = e.alias,
                 host = e.host,
@@ -58,6 +63,10 @@ class SshFormViewModel(app: Application, private val editId: Long) : AndroidView
                 authType = e.authType,
                 privateKey = null,
                 isEdit = true,
+                savedKeyInfo = savedKey?.let {
+                    "${com.serverprobe.manager.ssh.SshKeyLoader.detectFormat(it)} · ${it.length} 字符"
+                },
+                hasSavedPassword = !mgr.sshRepo.passwordOf(e).isNullOrEmpty(),
             )
         }
     }

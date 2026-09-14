@@ -149,7 +149,15 @@ fun SshFormScreen(
                 OutlinedTextField(
                     value = form.password,
                     onValueChange = { v -> vm.update { f -> f.copy(password = v, passwordChanged = true) } },
-                    label = { Text(if (form.isEdit && !form.passwordChanged) "密码（未输入则保留原值）" else "密码") },
+                    label = {
+                        Text(
+                            when {
+                                form.isEdit && form.hasSavedPassword && !form.passwordChanged -> "密码（已保存 ✓，未输入则保留）"
+                                form.isEdit && !form.passwordChanged -> "密码（未输入则保留原值）"
+                                else -> "密码"
+                            },
+                        )
+                    },
                     singleLine = true,
                     visualTransformation = PasswordVisualTransformation(),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
@@ -185,9 +193,11 @@ fun SshFormScreen(
                 )
                 if (pk == null && form.isEdit) {
                     Text(
-                        "已保存私钥（未重新输入则保留原值）",
+                        form.savedKeyInfo?.let { "已保存私钥 ✓（$it，重新选择或粘贴可更换）" }
+                            ?: "未检测到已保存的私钥，请重新选择或粘贴",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = if (form.savedKeyInfo != null) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.error,
                     )
                 }
                 OutlinedTextField(

@@ -164,6 +164,10 @@ object SshManager {
         } catch (e: SshException) {
             runCatching { client.disconnect() }
             throw e
+        } catch (e: HostKeyUnknownException) {
+            // TOFU：交由上层弹出指纹确认框，不能被包装成通用错误
+            runCatching { client.disconnect() }
+            throw e
         } catch (e: Exception) {
             runCatching { client.disconnect() }
             throw SshException("SSH 错误: ${e.message ?: e.javaClass.simpleName}")
