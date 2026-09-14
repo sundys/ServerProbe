@@ -40,7 +40,7 @@ class SettingsRepository(private val context: Context) {
     val biometricLock: Flow<Boolean> = context.dataStore.data.map { p -> p[Keys.BIOMETRIC_LOCK] ?: false }
 
     /** 终端字号（sp），默认 13 */
-    val terminalFontSize: Flow<Float> = context.dataStore.data.map { p -> p[Keys.TERM_FONT_SIZE] ?: 13f }
+    val terminalFontSize: Flow<Float> = context.dataStore.data.map { p -> p[Keys.TERM_FONT_SIZE] ?: 10f }
 
     suspend fun setDisplayMode(mode: DisplayMode) {
         context.dataStore.edit { it[Keys.DISPLAY_MODE] = mode.ordinal }
