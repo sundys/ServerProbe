@@ -39,7 +39,12 @@ class TerminalViewModel(app: Application) : AndroidViewModel(app) {
     private var started = false
     private val mgr = App.get(app)
 
-    /** 终端尺寸变化：未连接则以此尺寸发起连接；已连接则在线调整 PTY 与缓冲区 */
+    /**
+     * 终端尺寸变化。
+     * 首次（布局稳定后）以此尺寸发起连接；已连接后键盘弹出导致的行数变化
+     * 只调整本地缓冲区渲染，**不改 PTY 尺寸**——避免服务器屏幕模型与
+     * 显示错位（光标"消失"在键盘下方），也不触发窗口变更竞争。
+     */
     fun onSize(sshId: Long, cols: Int, rows: Int) {
         if (!started) {
             started = true
@@ -47,11 +52,14 @@ class TerminalViewModel(app: Application) : AndroidViewModel(app) {
             return
         }
         if (sshId != this.sshId) return
-        lastCols = cols
-        lastRows = rows
-        emulator.value?.resize(cols, rows)
-        session?.resize(cols, rows)
-        dataVersion.value++
+        val emu = emulator.value ?: return
+        // 列数变化仍需同步服务器（旋转屏幕）；行数变化多半是键盘，保持 PTY 不变
+        if (cols != lastCols) {
+            lastCols = cols
+            runCatching { emu.resize(cols, rows) }
+            runCatching { session?.resize(cols, rows) }
+            dataVersion.value++
+        }
     }
 
     fun start(sshId: Long, cols: Int, rows: Int) {
