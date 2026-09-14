@@ -105,12 +105,11 @@ object SshManager {
         val client = SSHClient()
         // 握手阶段需要 socket 读超时，避免服务端未回包时一直卡住；
         // 连接建立后立即清零，交互式 shell 空闲时不会被 socket 超时掐断。
-        client.timeout = CONNECT_TIMEOUT_MS
+        client.timeout = 0
         client.connectTimeout = CONNECT_TIMEOUT_MS
-        // keepalive 在握手期间必须关闭：sshj 的保活包会在 KEXINIT 前发出，
-        // 触发 OpenSSH strict KEX 检查报「KEXINIT was not the first packet」。
-        // 认证成功后再启用（见下方）。
-        client.connection.keepAlive.keepAliveInterval = 0
+        // 不启用 keepalive：sshj 的保活线程与交互写入并发时服务器会以
+        // "Disconnected"(reason=0) 断开（实测）。交互式 shell 依赖 TCP 层
+        // 存活即可；socket 读超时保持 0，空闲不会被掐断。
         client.addHostKeyVerifier(object : HostKeyVerifier {
             override fun verify(hostname: String, port: Int, key: PublicKey): Boolean {
                 presented = key
@@ -144,9 +143,6 @@ object SshManager {
             } catch (e: java.net.UnknownHostException) {
                 throw SshException("主机名无法解析: ${params.host}")
             }
-
-            // 握手完成，启用保活探活（交互空闲不再被掐断）
-            client.connection.keepAlive.keepAliveInterval = 30
 
             when (params.authType) {
                 AUTH_PASSWORD -> {
