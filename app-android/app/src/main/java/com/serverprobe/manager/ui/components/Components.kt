@@ -29,7 +29,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import kotlin.math.max
-import kotlin.math.roundToInt
 
 // ---- 数值格式化 ----
 
@@ -179,7 +178,7 @@ fun GaugeIndicator(
                 drawArc(color, 180f, sweep, false, topLeft, arcSize, style = Stroke(stroke, cap = StrokeCap.Round))
             }
             Text(
-                "${percent.roundToInt()}%",
+                "%.1f%%".format(percent),
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.Bold,
             )
