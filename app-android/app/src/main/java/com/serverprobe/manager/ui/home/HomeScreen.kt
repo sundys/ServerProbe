@@ -58,7 +58,6 @@ import com.serverprobe.manager.data.db.ProbeHostEntity
 import com.serverprobe.manager.data.repo.ProbeRepository
 import com.serverprobe.manager.ui.components.ConfirmDialog
 import com.serverprobe.manager.ui.components.GaugeIndicator
-import com.serverprobe.manager.ui.components.MiniChart
 import com.serverprobe.manager.ui.components.StatusDot
 import com.serverprobe.manager.ui.components.formatBps
 import com.serverprobe.manager.ui.components.formatBytes
@@ -355,8 +354,6 @@ private fun HostCard(
                     }
                 }
             }
-
-            MiniChart(values = rt?.cpuHistory ?: emptyList())
 
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 GaugeIndicator("CPU", st?.cpuPercent ?: 0.0, Modifier.weight(1f))
