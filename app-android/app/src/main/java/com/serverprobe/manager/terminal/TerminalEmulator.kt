@@ -164,7 +164,7 @@ class TerminalEmulator(
                 }
                 '\n', '\u000B', '\u000C' -> lineFeed()
                 '\u0008' -> if (cx > 0) cx--
-                '\t' -> cx = ((cx / 8) + 1) * 8
+                '\t' -> cx = (((cx / 8) + 1) * 8).coerceAtMost(cols - 1)
                 '\u0007' -> Unit // BEL 忽略
                 '\u0000', '\u0001', '\u0002', '\u0003', '\u0004', '\u0005', '\u0006' -> Unit
                 else -> if (c >= ' ') putChar(c)
@@ -372,6 +372,11 @@ class TerminalEmulator(
             cx = 0
             lineFeed()
         }
+        // 防御：光标一旦越界，idx 会落到相邻行上（写坏下一行）
+        if (cx < 0) cx = 0
+        if (cx > cols - 1) cx = cols - 1
+        if (cy < 0) cy = 0
+        if (cy > rows - 1) cy = rows - 1
         val b = buf
         val idx = cy * cols + cx
         b.chars[idx] = c

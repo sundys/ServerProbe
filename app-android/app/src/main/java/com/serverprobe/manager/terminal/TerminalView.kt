@@ -4,7 +4,6 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.RectF
-import android.graphics.Typeface
 import android.text.InputType
 import android.util.TypedValue
 import android.util.AttributeSet
@@ -47,22 +46,34 @@ class TerminalView @JvmOverloads constructor(
 
     private var reportedCols = 0
     private var reportedRows = 0
+    private var diagnized = false
     private val debounceHandler = android.os.Handler(android.os.Looper.getMainLooper())
     private var pendingSize: Pair<Int, Int>? = null
 
     private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        typeface = Typeface.MONOSPACE
+        typeface = TerminalFont.typeface
         textSize = spToPx(14f)
     }
+
+    /** 度量专用画笔：绘制路径会临时改 textScaleX，不能污染字宽测量 */
+    private val measurePaint = Paint().apply { typeface = textPaint.typeface }
     private val bgPaint = Paint()
     private val cursorPaint = Paint().apply { style = Paint.Style.FILL }
     private val selectPaint = Paint().apply { style = Paint.Style.FILL }
     private val cursorBounds = RectF()
     private val selectBounds = RectF()
 
-    private var cellW = textPaint.measureText("W")
-    private var cellH = textPaint.fontSpacing
+    /** 是否选到了真正等宽的字体（决定绘制路径） */
+    private var fixedPitch = TerminalFont.fixedPitch
+
+    /** 单元格宽度：必须等于每个字符的绘制步长（否则列数与屏宽对不上） */
+    private var cellW = 1f
+    private var cellH = 1f
     private var textBaseline = 0f
+
+    /** 单字符宽度缓存（非等宽字体兜底绘制用） */
+    private val charWidths = HashMap<Char, Float>(128)
+    private val singleChar = CharArray(1)
 
     private val blinkHandler = object : android.os.Handler(android.os.Looper.getMainLooper()) {}
     private var cursorOn = true
@@ -113,18 +124,59 @@ class TerminalView @JvmOverloads constructor(
     init {
         isFocusable = true
         isFocusableInTouchMode = true
-        cellH = textPaint.fontMetrics.let { it.descent - it.ascent }
-        textBaseline = -textPaint.fontMetrics.ascent
+        updateCellMetrics()
+    }
+
+    /**
+     * 重算单元格度量。字体/字号变化后必须调用，否则「列数 ↔ 屏宽」会失配。
+     */
+    private fun updateCellMetrics() {
+        val m = TerminalFont.metrics(measurePaint, textPaint.textSize)
+        fixedPitch = m.fixedPitch
+        cellW = m.cellW
+        charWidths.clear()
+        val fm = textPaint.fontMetrics
+        cellH = fm.descent - fm.ascent
+        textBaseline = -fm.ascent
+    }
+
+    /** 单字符宽度（非等宽兜底绘制用，避免逐帧重复测量） */
+    private fun widthOf(c: Char): Float = charWidths.getOrPut(c) {
+        measurePaint.textSize = textPaint.textSize
+        measurePaint.measureText(c.toString()).coerceAtLeast(textPaint.textSize * 0.05f)
+    }
+
+    /** 当前 View 能容纳的网格尺寸 */
+    private fun currentGrid(): Pair<Int, Int> {
+        val cols = (width / cellW).toInt().coerceIn(20, 300)
+        val rows = (height / cellH).toInt().coerceIn(5, 200)
+        return cols to rows
+    }
+
+    /**
+     * 立即上报当前网格尺寸（不等防抖）。
+     * 连接建立后由 UI 调用一次，确保 PTY 最终一定等于屏幕真实列数——
+     * 握手期间的尺寸上报发生在 emulator 就绪之前，不能作为最终依据。
+     */
+    fun reportSizeNow() {
+        if (width <= 0 || height <= 0) return
+        val (cols, rows) = currentGrid()
+        reportedCols = cols
+        reportedRows = rows
+        pendingSize = null
+        debounceHandler.removeCallbacksAndMessages(null)
+        onSizeChanged?.invoke(cols, rows)
     }
 
     private fun spToPx(sp: Float): Float =
         TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, sp, resources.displayMetrics)
 
     fun setTextSizePx(px: Float) {
+        // 幂等：Compose 每次重组都会调用，字号未变时直接返回，
+        // 避免反复 requestLayout 造成无谓的布局与尺寸上报
+        if (px > 0f && kotlin.math.abs(px - textPaint.textSize) < 0.01f) return
         textPaint.textSize = px
-        cellW = textPaint.measureText("W")
-        cellH = textPaint.fontMetrics.descent - textPaint.fontMetrics.ascent
-        textBaseline = -textPaint.fontMetrics.ascent
+        updateCellMetrics()
         // 字号变化会改变每行列数，重新上报网格尺寸
         if (width > 0 && height > 0) {
             reportedCols = 0 // 强制下轮 onLayout 重新上报
@@ -136,11 +188,19 @@ class TerminalView @JvmOverloads constructor(
     override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
         super.onLayout(changed, left, top, right, bottom)
         if (width > 0 && height > 0) {
-            val cols = (width / cellW).toInt().coerceIn(20, 300)
-            val rows = (height / cellH).toInt().coerceIn(5, 100)
+            val (cols, rows) = currentGrid()
             if (cols != reportedCols || rows != reportedRows) {
                 reportedCols = cols
                 reportedRows = rows
+                if (!diagnized) {
+                    // 字号 / 字体 / 列数是"折行错乱、只占半边屏"类问题的关键取证信息
+                    diagnized = true
+                    com.serverprobe.manager.Diagnostics.log(
+                        context,
+                        "terminal grid ${cols}x$rows, view ${width}x$height, " +
+                            "font=${TerminalFont.description}, cell=${cellW}x$cellH, sp=${textPaint.textSize}",
+                    )
+                }
                 // 防抖 200ms：布局连续变化只上报最终尺寸
                 pendingSize = cols to rows
                 debounceHandler.removeCallbacksAndMessages(null)
@@ -201,9 +261,16 @@ class TerminalView @JvmOverloads constructor(
                 }
                 textPaint.isFakeBoldText = (attr and 1) != 0
                 textPaint.isUnderlineText = (attr and 2) != 0
-                runBuilder.setLength(0)
-                for (i in col until end) runBuilder.append(emu.charAt(row, i))
-                if (runBuilder.isNotBlank()) canvas.drawText(runBuilder, 0, runBuilder.length, x, y + textBaseline, textPaint)
+                if (fixedPitch) {
+                    textPaint.textScaleX = 1f
+                    runBuilder.setLength(0)
+                    for (i in col until end) runBuilder.append(emu.charAt(row, i))
+                    if (runBuilder.isNotBlank()) canvas.drawText(runBuilder, 0, runBuilder.length, x, y + textBaseline, textPaint)
+                } else {
+                    // 系统没有可用的等宽字体：逐字符画进自己的格子（横向压缩到格宽），
+                    // 保证列对齐且不越格——否则同一行的字符步长各不相同，整屏错列
+                    drawInCells(canvas, emu, row, col, end, y + textBaseline)
+                }
                 x += (end - col) * cellW
                 col = end
             }
@@ -246,6 +313,19 @@ class TerminalView @JvmOverloads constructor(
             cursorOn = !cursorOn
             invalidate()
         }, 500)
+    }
+
+    /** 非等宽字体兜底：把字符压进各自的单元格，列位置固定为 col * cellW */
+    private fun drawInCells(canvas: Canvas, emu: TerminalEmulator, row: Int, from: Int, to: Int, baseline: Float) {
+        for (col in from until to) {
+            val ch = emu.charAt(row, col)
+            if (ch == ' ' || ch == '\u0000') continue
+            val adv = widthOf(ch)
+            textPaint.textScaleX = (cellW / adv).coerceIn(0.35f, 1.6f)
+            singleChar[0] = ch
+            canvas.drawText(singleChar, 0, 1, col * cellW, baseline, textPaint)
+        }
+        textPaint.textScaleX = 1f
     }
 
     /** 选区文本（供复制） */
