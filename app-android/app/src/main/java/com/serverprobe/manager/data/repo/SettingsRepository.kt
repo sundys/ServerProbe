@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
+import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -21,6 +22,7 @@ class SettingsRepository(private val context: Context) {
         val DISPLAY_MODE = intPreferencesKey("display_mode")
         val POLL_INTERVAL = intPreferencesKey("poll_interval_sec")
         val BIOMETRIC_LOCK = booleanPreferencesKey("biometric_lock")
+        val TERM_FONT_SIZE = floatPreferencesKey("term_font_size")
     }
 
     val displayMode: Flow<DisplayMode> = context.dataStore.data.map { p ->
@@ -37,6 +39,9 @@ class SettingsRepository(private val context: Context) {
     /** 应用切后台后启用生物识别/PIN 锁 */
     val biometricLock: Flow<Boolean> = context.dataStore.data.map { p -> p[Keys.BIOMETRIC_LOCK] ?: false }
 
+    /** 终端字号（sp），默认 13 */
+    val terminalFontSize: Flow<Float> = context.dataStore.data.map { p -> p[Keys.TERM_FONT_SIZE] ?: 13f }
+
     suspend fun setDisplayMode(mode: DisplayMode) {
         context.dataStore.edit { it[Keys.DISPLAY_MODE] = mode.ordinal }
     }
@@ -47,5 +52,9 @@ class SettingsRepository(private val context: Context) {
 
     suspend fun setBiometricLock(enabled: Boolean) {
         context.dataStore.edit { it[Keys.BIOMETRIC_LOCK] = enabled }
+    }
+
+    suspend fun setTerminalFontSize(sp: Float) {
+        context.dataStore.edit { it[Keys.TERM_FONT_SIZE] = sp.coerceIn(8f, 28f) }
     }
 }
