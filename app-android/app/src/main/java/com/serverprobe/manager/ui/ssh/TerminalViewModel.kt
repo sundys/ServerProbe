@@ -119,7 +119,8 @@ class TerminalViewModel(app: Application) : AndroidViewModel(app) {
                         batch += more
                         size += more.size
                     }
-                    emu.feed(batch)
+                    // 喂入异常不应打断会话（缩小/清屏瞬间尺寸竞争等瞬时问题）
+                    runCatching { emu.feed(batch) }
                     dataVersion.value++
                 }
                 // 输出通道关闭 = 连接断开
@@ -152,7 +153,11 @@ class TerminalViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun write(bytes: ByteArray) {
-        session?.let { runCatching { it.write(bytes) } }
+        try {
+            session?.write(bytes)
+        } catch (e: Exception) {
+            state.value = TState.Closed(e.message ?: "发送失败，连接已断开")
+        }
     }
 
     fun retry() {
