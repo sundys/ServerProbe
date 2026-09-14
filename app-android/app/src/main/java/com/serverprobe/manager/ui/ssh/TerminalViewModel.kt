@@ -116,6 +116,13 @@ class TerminalViewModel(app: Application) : AndroidViewModel(app) {
                 if (currentCols != cols || currentRows != rows) {
                     s.resize(currentCols, currentRows)
                 }
+                // 关键校准：连接期间（握手+认证可能数秒）View 尺寸可能已变化
+                // （键盘弹出/动画完成），以最新尺寸为准再同步一次，保证 PTY 列数
+                // 与渲染列数一致——这是 banner 折行与光标错位的最终修正点。
+                if (lastCols != currentCols || lastRows != currentRows) {
+                    s.resize(lastCols, lastRows)
+                    emu.resize(lastCols, lastRows)
+                }
                 emulator.value = emu
                 state.value = TState.Connected
                 // 批量合并输出块：高吞吐场景（如 cat 大文件）下减少解析与重绘次数

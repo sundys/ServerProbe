@@ -15,7 +15,7 @@ android {
         minSdk = 26
         targetSdk = 36
         // CI 通过 -PappVersion=<tag> 注入版本号；本地构建使用默认值
-        versionCode = 26
+        versionCode = 27
         versionName = project.findProperty("appVersion") as String? ?: "1.1.18"
     }
 
