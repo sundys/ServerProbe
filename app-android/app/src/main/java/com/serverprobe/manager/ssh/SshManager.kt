@@ -103,8 +103,9 @@ object SshManager {
     suspend fun connect(params: Params, cols: Int, rows: Int): SshSession = withContext(Dispatchers.IO) {
         var presented: PublicKey? = null
         val client = SSHClient()
-        // 仅限制“建立连接”耗时；交互式 shell 不能设 socket 读超时（会空闲断流），
-        // 用 keepalive 探活代替
+        // 握手阶段需要 socket 读超时，避免服务端未回包时一直卡住；
+        // 连接建立后立即清零，交互式 shell 空闲时不会被 socket 超时掐断。
+        client.timeout = CONNECT_TIMEOUT_MS
         client.connectTimeout = CONNECT_TIMEOUT_MS
         client.connection.keepAlive.keepAliveInterval = 30
         client.addHostKeyVerifier(object : HostKeyVerifier {
@@ -120,6 +121,10 @@ object SshManager {
         try {
             try {
                 client.connect(params.host, params.port)
+                // SSHClient.timeout 会映射到 socket SO_TIMEOUT。只在握手期间启用，
+                // 否则终端空闲一段时间后会收到 SocketTimeoutException 并断线。
+                client.timeout = 0
+                client.socket.soTimeout = 0
             } catch (e: net.schmizz.sshj.transport.TransportException) {
                 val key = presented
                 if (key != null && params.storedFingerprint == null) {
@@ -180,6 +185,8 @@ object SshManager {
     suspend fun testConnection(params: Params): String = withContext(Dispatchers.IO) {
         var presented: PublicKey? = null
         val client = SSHClient()
+        // 与交互连接一致：限制握手等待时间，但不要让后续认证/读取受 socket 超时影响。
+        client.timeout = CONNECT_TIMEOUT_MS
         client.connectTimeout = CONNECT_TIMEOUT_MS
         client.addHostKeyVerifier(object : HostKeyVerifier {
             override fun verify(hostname: String, port: Int, key: PublicKey): Boolean {
@@ -192,6 +199,8 @@ object SshManager {
         client.use { c ->
             try {
                 c.connect(params.host, params.port)
+                c.timeout = 0
+                c.socket.soTimeout = 0
             } catch (e: Exception) {
                 throw SshException("连接失败: ${e.message ?: e.javaClass.simpleName}")
             }
