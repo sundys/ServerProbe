@@ -168,10 +168,10 @@ fun DetailScreen(
                             )
                         }
                         MiniChart(values = rt?.cpuHistory ?: emptyList())
-                        Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                            MeterBar("CPU", st?.cpuPercent ?: 0.0, Modifier.weight(1f),
+                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            MeterBar("CPU", st?.cpuPercent ?: 0.0, Modifier.fillMaxWidth(),
                                 detail = "核心 ${st?.cpuCores ?: 0} · ${formatPct(st?.cpuPercent ?: 0.0)}")
-                            MeterBar("内存", st?.memPercent ?: 0.0, Modifier.weight(1f),
+                            MeterBar("内存", st?.memPercent ?: 0.0, Modifier.fillMaxWidth(),
                                 detail = "${formatBytes(st?.memUsedBytes ?: 0)} / ${formatBytes(st?.memTotalBytes ?: 0)}")
                         }
                         Text(

@@ -357,18 +357,18 @@ private fun HostCard(
 
             MiniChart(values = rt?.cpuHistory ?: emptyList())
 
-            Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                MeterBar("CPU", st?.cpuPercent ?: 0.0, Modifier.weight(1f))
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                MeterBar("CPU", st?.cpuPercent ?: 0.0, Modifier.fillMaxWidth())
                 MeterBar(
                     "内存",
                     st?.memPercent ?: 0.0,
-                    Modifier.weight(1f),
+                    Modifier.fillMaxWidth(),
                     detail = st?.let { "${formatBytes(it.memUsedBytes)} / ${formatBytes(it.memTotalBytes)}" },
                 )
                 MeterBar(
                     "磁盘",
                     st?.disks?.maxByOrNull { it.usedPercent }?.usedPercent ?: 0.0,
-                    Modifier.weight(1f),
+                    Modifier.fillMaxWidth(),
                     detail = st?.disks?.maxByOrNull { it.usedPercent }?.let { formatPct(it.usedPercent) },
                 )
             }
