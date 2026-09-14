@@ -103,4 +103,28 @@ class TerminalEmulatorTest {
         assertEquals(0xFFFFFF, TerminalEmulator.PALETTE[15])
         assertEquals((238 shl 16) or (238 shl 8) or 238, TerminalEmulator.PALETTE[255])
     }
+
+    @Test
+    fun `tab stops clamp to last column`() {
+        // 制表符必须停在最后一列：越界会把后续字符写到下一行（idx 落到相邻行）
+        val emu = TerminalEmulator(10, 3)
+        emu.feed("\t\tX".toByteArray())
+        assertEquals('X', emu.charAt(0, 9))
+        assertEquals(' ', emu.charAt(1, 0))
+        assertEquals(9, emu.cx)
+    }
+
+    @Test
+    fun `resize keeps content and clamps cursor`() {
+        val emu = TerminalEmulator(30, 8)
+        emu.feed("hello".toByteArray())
+        assertEquals(5, emu.cx)
+        emu.resize(40, 10)
+        assertEquals('h', emu.charAt(0, 0))
+        assertEquals(5, emu.cx)
+        // 光标在最后一列时缩窄缓冲区，必须被钳制回界内
+        emu.feed("\u001B[1;30H".toByteArray())
+        emu.resize(20, 5)
+        assertEquals(19, emu.cx)
+    }
 }

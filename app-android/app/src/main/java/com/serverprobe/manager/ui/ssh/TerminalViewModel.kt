@@ -52,14 +52,18 @@ class TerminalViewModel(app: Application) : AndroidViewModel(app) {
             return
         }
         if (sshId != this.sshId) return
+        // 必须**先记录**最新尺寸再看能否立刻生效：握手/认证期间 emulator 尚未
+        // 创建，若此时直接 return，lastCols/lastRows 会停留在首次（可能尚未稳定
+        // 的）布局上，连接完成后 PTY 就被固定成错误列数——表现为服务器按半屏宽
+        // 折行、文字只占屏幕左半边。连接完成后由 View.reportSizeNow 再校准一次。
+        val colsChanged = cols != lastCols
+        lastCols = cols
+        lastRows = rows
+        if (!colsChanged) return
         val emu = emulator.value ?: return
-        // 列数变化仍需同步服务器（旋转屏幕）；行数变化多半是键盘，保持 PTY 不变
-        if (cols != lastCols) {
-            lastCols = cols
-            runCatching { emu.resize(cols, rows) }
-            runCatching { session?.resize(cols, rows) }
-            dataVersion.value++
-        }
+        runCatching { emu.resize(cols, rows) }
+        runCatching { session?.resize(cols, rows) }
+        dataVersion.value++
     }
 
     fun start(sshId: Long, cols: Int, rows: Int) {
@@ -102,27 +106,16 @@ class TerminalViewModel(app: Application) : AndroidViewModel(app) {
                 val s = SshManager.connect(params, cols, rows)
                 session = s
 
-                // The view can be laid out more than once while the connection is
-                // being established (for example when the IME appears).  The
-                // dimensions captured above are therefore not necessarily the
-                // dimensions of the currently visible terminal.  Start the
-                // emulator at the latest size and notify the server of any size
-                // change that happened during the handshake; otherwise the PTY
-                // remains stuck at the transient first-layout width and wraps
-                // output after only a few columns.
+                // 握手/认证期间 View 可能多次上报网格尺寸（键盘弹出、进入动画
+                // 结束等）。onSize 已把 lastCols/lastRows 持续更新为最新值，
+                // 这里以它初始化本地缓冲区，并在与 allocatePTY 时的尺寸不同时
+                // 补发 window-change，保证 PTY 列数 == 屏幕可容纳列数。
                 val currentCols = lastCols.coerceAtLeast(20)
                 val currentRows = lastRows.coerceAtLeast(5)
-                val emu = TerminalEmulator(currentCols, currentRows) { resp -> runCatching { s.write(resp) } }
                 if (currentCols != cols || currentRows != rows) {
-                    s.resize(currentCols, currentRows)
+                    runCatching { s.resize(currentCols, currentRows) }
                 }
-                // 关键校准：连接期间（握手+认证可能数秒）View 尺寸可能已变化
-                // （键盘弹出/动画完成），以最新尺寸为准再同步一次，保证 PTY 列数
-                // 与渲染列数一致——这是 banner 折行与光标错位的最终修正点。
-                if (lastCols != currentCols || lastRows != currentRows) {
-                    s.resize(lastCols, lastRows)
-                    emu.resize(lastCols, lastRows)
-                }
+                val emu = TerminalEmulator(currentCols, currentRows) { resp -> runCatching { s.write(resp) } }
                 emulator.value = emu
                 state.value = TState.Connected
                 // 批量合并输出块：高吞吐场景（如 cat 大文件）下减少解析与重绘次数

@@ -265,6 +265,10 @@ fun TerminalScreen(
     // 连接建立后聚焦终端并拉起软键盘（仅一次，不随输出重绘重复触发）
     LaunchedEffect(emu) {
         if (emu != null) {
+            // 关键校准：连接过程中上报的网格尺寸发生在 emulator 就绪之前，
+            // 不能作为 PTY 的最终尺寸；此处按当前屏幕真实列数再上报一次，
+            // 确保服务器折行宽度与屏幕一致（否则输出只占屏幕左半边）。
+            terminalView?.reportSizeNow()
             terminalView?.requestFocus()
             val imm = ctx.getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as InputMethodManager
             imm.showSoftInput(terminalView, 0)
