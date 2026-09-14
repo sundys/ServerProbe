@@ -160,11 +160,18 @@ class TerminalViewModel(app: Application) : AndroidViewModel(app) {
         state.value = TState.Closed("已取消：主机指纹未确认")
     }
 
+    /**
+     * 发送用户输入。必须在 IO 线程执行：sshj 的通道写内部有窗口等待与
+     * 与读线程共享的锁，在 Android 主线程直接写会与传输线程竞争
+     * （桌面 JVM 上不复现，Android 线程调度下会触发服务器断开）。
+     */
     fun write(bytes: ByteArray) {
-        try {
-            session?.write(bytes)
-        } catch (e: Exception) {
-            state.value = TState.Closed(e.message ?: "发送失败，连接已断开")
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                session?.write(bytes)
+            } catch (e: Exception) {
+                state.value = TState.Closed(e.message ?: "发送失败，连接已断开")
+            }
         }
     }
 
