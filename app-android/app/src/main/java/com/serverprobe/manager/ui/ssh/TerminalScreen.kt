@@ -67,8 +67,8 @@ fun TerminalScreen(
     val scope = androidx.compose.runtime.rememberCoroutineScope()
 
     var terminalView by remember { mutableStateOf<TerminalView?>(null) }
-    val savedFontSize by App.instance.settings.terminalFontSize.collectAsState(initial = 13f)
-    var fontSizeSp by remember { mutableStateOf(13f) }
+    val savedFontSize by App.instance.settings.terminalFontSize.collectAsState(initial = 10f)
+    var fontSizeSp by remember { mutableStateOf(10f) }
     var appliedSavedFont by remember { mutableStateOf(false) }
     LaunchedEffect(savedFontSize) {
         if (!appliedSavedFont && savedFontSize > 0f) {
@@ -136,6 +136,8 @@ fun TerminalScreen(
                     },
                     update = { view ->
                         view.emulator = emu
+                        // 字号重组后保持一致（factory 初值可能已被 savedFontSize 更新）
+                        view.setTextSizePx(TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, fontSizeSp, ctx.resources.displayMetrics))
                     },
                     modifier = Modifier.fillMaxSize(),
                 )

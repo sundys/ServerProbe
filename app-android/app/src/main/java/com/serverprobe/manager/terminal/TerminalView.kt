@@ -125,6 +125,11 @@ class TerminalView @JvmOverloads constructor(
         cellW = textPaint.measureText("W")
         cellH = textPaint.fontMetrics.descent - textPaint.fontMetrics.ascent
         textBaseline = -textPaint.fontMetrics.ascent
+        // 字号变化会改变每行列数，重新上报网格尺寸
+        if (width > 0 && height > 0) {
+            reportedCols = 0 // 强制下轮 onLayout 重新上报
+            requestLayout()
+        }
         invalidate()
     }
 
