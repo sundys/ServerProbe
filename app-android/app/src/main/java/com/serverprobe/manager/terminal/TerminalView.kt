@@ -25,8 +25,10 @@ class TerminalView @JvmOverloads constructor(
 
     var emulator: TerminalEmulator? = null
     var onData: (ByteArray) -> Unit = {}
-    var onFirstLayout: ((cols: Int, rows: Int) -> Unit)? = null
-    private var firstLayoutDone = false
+    /** 终端网格尺寸变化回调（含首次布局与键盘/旋转导致的尺寸变化） */
+    var onSizeChanged: ((cols: Int, rows: Int) -> Unit)? = null
+    private var reportedCols = 0
+    private var reportedRows = 0
 
     private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         typeface = Typeface.MONOSPACE
@@ -65,11 +67,14 @@ class TerminalView @JvmOverloads constructor(
 
     override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
         super.onLayout(changed, left, top, right, bottom)
-        if (!firstLayoutDone && width > 0 && height > 0) {
-            firstLayoutDone = true
+        if (width > 0 && height > 0) {
             val cols = (width / cellW).toInt().coerceIn(20, 300)
             val rows = (height / cellH).toInt().coerceIn(5, 100)
-            onFirstLayout?.invoke(cols, rows)
+            if (cols != reportedCols || rows != reportedRows) {
+                reportedCols = cols
+                reportedRows = rows
+                onSizeChanged?.invoke(cols, rows)
+            }
         }
     }
 

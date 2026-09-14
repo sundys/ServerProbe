@@ -103,8 +103,10 @@ object SshManager {
     suspend fun connect(params: Params, cols: Int, rows: Int): SshSession = withContext(Dispatchers.IO) {
         var presented: PublicKey? = null
         val client = SSHClient()
-        client.timeout = CONNECT_TIMEOUT_MS
+        // 仅限制“建立连接”耗时；交互式 shell 不能设 socket 读超时（会空闲断流），
+        // 用 keepalive 探活代替
         client.connectTimeout = CONNECT_TIMEOUT_MS
+        client.connection.keepAlive.keepAliveInterval = 30
         client.addHostKeyVerifier(object : HostKeyVerifier {
             override fun verify(hostname: String, port: Int, key: PublicKey): Boolean {
                 presented = key
@@ -178,7 +180,6 @@ object SshManager {
     suspend fun testConnection(params: Params): String = withContext(Dispatchers.IO) {
         var presented: PublicKey? = null
         val client = SSHClient()
-        client.timeout = CONNECT_TIMEOUT_MS
         client.connectTimeout = CONNECT_TIMEOUT_MS
         client.addHostKeyVerifier(object : HostKeyVerifier {
             override fun verify(hostname: String, port: Int, key: PublicKey): Boolean {
