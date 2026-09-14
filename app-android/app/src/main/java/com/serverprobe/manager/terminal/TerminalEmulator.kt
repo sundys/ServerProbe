@@ -141,8 +141,10 @@ class TerminalEmulator(
         }
     }
 
-    /** 喂入服务器字节流（增量，UTF-8 多字节可跨块） */
-    fun feed(bytes: ByteArray) {
+    private val ioLock = Any()
+
+    /** 喂入服务器字节流（增量，UTF-8 多字节可跨块）；与 resize 互斥避免并发损坏缓冲区 */
+    fun feed(bytes: ByteArray) = synchronized(ioLock) {
         if (bytes.isEmpty()) return
         for (b in bytes) feedByte(b.toInt() and 0xFF)
     }
@@ -508,8 +510,8 @@ class TerminalEmulator(
         cy = cy.coerceIn(0, rows - 1)
     }
 
-    /** 简单缩放：保留左上角内容 */
-    fun resize(newCols: Int, newRows: Int) {
+    /** 缩放缓冲区（与 feed 互斥） */
+    fun resize(newCols: Int, newRows: Int) = synchronized(ioLock) {
         val nc = newCols.coerceIn(20, 500)
         val nr = newRows.coerceIn(5, 200)
         if (nc == cols && nr == rows) return

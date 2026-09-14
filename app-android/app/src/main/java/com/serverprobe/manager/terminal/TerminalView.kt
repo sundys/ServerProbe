@@ -29,6 +29,8 @@ class TerminalView @JvmOverloads constructor(
     var onSizeChanged: ((cols: Int, rows: Int) -> Unit)? = null
     private var reportedCols = 0
     private var reportedRows = 0
+    private val debounceHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private var pendingSize: Pair<Int, Int>? = null
 
     private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         typeface = Typeface.MONOSPACE
@@ -73,7 +75,13 @@ class TerminalView @JvmOverloads constructor(
             if (cols != reportedCols || rows != reportedRows) {
                 reportedCols = cols
                 reportedRows = rows
-                onSizeChanged?.invoke(cols, rows)
+                // 防抖 200ms：布局连续变化（键盘动画等）只上报最终尺寸
+                pendingSize = cols to rows
+                debounceHandler.removeCallbacksAndMessages(null)
+                debounceHandler.postDelayed({
+                    pendingSize?.let { onSizeChanged?.invoke(it.first, it.second) }
+                    pendingSize = null
+                }, 200)
             }
         }
     }
