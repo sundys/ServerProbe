@@ -62,6 +62,7 @@ import com.serverprobe.manager.ui.components.MiniChart
 import com.serverprobe.manager.ui.components.StatusDot
 import com.serverprobe.manager.ui.components.formatBps
 import com.serverprobe.manager.ui.components.formatBytes
+import com.serverprobe.manager.ui.components.memDetail
 import com.serverprobe.manager.ui.components.formatPct
 import com.serverprobe.manager.ui.components.formatTrafficMB
 import com.serverprobe.manager.ui.components.formatUptime
@@ -363,7 +364,7 @@ private fun HostCard(
                     "内存",
                     st?.memPercent ?: 0.0,
                     Modifier.weight(1f),
-                    detail = st?.let { "${formatBytes(it.memUsedBytes)} / ${formatBytes(it.memTotalBytes)}" },
+                    detail = st?.let { memDetail(it.memUsedBytes, it.memTotalBytes) },
                 )
                 GaugeIndicator(
                     "磁盘",

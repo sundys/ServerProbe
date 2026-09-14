@@ -71,6 +71,10 @@ fun formatUptime(seconds: Double): String {
 
 fun formatPct(p: Double): String = "%.1f%%".format(p)
 
+/** 内存“已用 / 总量”；旧探针总量缺失(0)时只显示已用 */
+fun memDetail(used: Long, total: Long): String =
+    if (total > 0) "${formatBytes(used)} / ${formatBytes(total)}" else formatBytes(used)
+
 /** 流量统计固定以 MB 显示 */
 fun formatTrafficMB(bytes: Long): String {
     if (bytes <= 0) return "0.0 MB"
