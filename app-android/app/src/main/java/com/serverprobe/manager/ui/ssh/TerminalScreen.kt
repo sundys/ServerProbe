@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
@@ -91,24 +93,58 @@ fun TerminalScreen(
             Modifier
                 .fillMaxSize()
                 .padding(padding)
+                .imePadding()
                 .background(MaterialTheme.colorScheme.background),
         ) {
             Box(
                 Modifier
                     .weight(1f)
                     .fillMaxWidth(),
-                contentAlignment = Alignment.Center,
             ) {
+                AndroidView(
+                    factory = { context ->
+                        TerminalView(context).apply {
+                            setTextSizePx(TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, fontSizeSp, context.resources.displayMetrics))
+                            onData = { vm.write(it) }
+                            onSizeChanged = { c, r -> vm.onSize(sshId, c, r) }
+                            terminalView = this
+                        }
+                    },
+                    update = { view ->
+                        view.emulator = emu
+                    },
+                    modifier = Modifier.fillMaxSize(),
+                )
                 when (val s = state) {
                     is TerminalViewModel.TState.Connecting, TerminalViewModel.TState.Idle -> {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Column(
+                            modifier = Modifier.align(Alignment.Center),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
                             CircularProgressIndicator()
                             Text((s as? TerminalViewModel.TState.Connecting)?.msg ?: "准备中…")
                         }
                     }
                     is TerminalViewModel.TState.Closed -> {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                            Text(s.reason ?: "连接已断开", color = MaterialTheme.colorScheme.error)
+                        // 顶部横幅：保留终端内容可见，便于查看断开前的输出
+                        Column(
+                            modifier = Modifier
+                                .align(Alignment.TopCenter)
+                                .padding(10.dp)
+                                .background(
+                                    MaterialTheme.colorScheme.surface.copy(alpha = 0.95f),
+                                    RoundedCornerShape(14.dp),
+                                )
+                                .padding(horizontal = 16.dp, vertical = 12.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Text(
+                                "连接已断开${s.reason?.let { "：$it" } ?: ""}",
+                                color = MaterialTheme.colorScheme.error,
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
                             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                                 Button(onClick = { vm.retry() }) { Text("重试") }
                                 FilledTonalButton(onClick = onClose) { Text("返回") }
@@ -117,22 +153,6 @@ fun TerminalScreen(
                     }
                     else -> Unit
                 }
-                AndroidView(
-                    factory = { context ->
-                        TerminalView(context).apply {
-                            setTextSizePx(TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, fontSizeSp, context.resources.displayMetrics))
-                            onData = { vm.write(it) }
-                            onFirstLayout = { cols, rows -> vm.start(sshId, cols, rows) }
-                            terminalView = this
-                        }
-                    },
-                    update = { view ->
-                        view.emulator = emu
-                    },
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .align(Alignment.TopStart),
-                )
             }
 
             // 控制键条

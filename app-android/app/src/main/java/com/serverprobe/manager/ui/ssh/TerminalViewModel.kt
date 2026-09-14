@@ -36,7 +36,23 @@ class TerminalViewModel(app: Application) : AndroidViewModel(app) {
     private var sshId: Long = 0
     private var lastCols = 0
     private var lastRows = 0
+    private var started = false
     private val mgr = App.get(app)
+
+    /** 终端尺寸变化：未连接则以此尺寸发起连接；已连接则在线调整 PTY 与缓冲区 */
+    fun onSize(sshId: Long, cols: Int, rows: Int) {
+        if (!started) {
+            started = true
+            start(sshId, cols, rows)
+            return
+        }
+        if (sshId != this.sshId) return
+        lastCols = cols
+        lastRows = rows
+        emulator.value?.resize(cols, rows)
+        session?.resize(cols, rows)
+        dataVersion.value++
+    }
 
     fun start(sshId: Long, cols: Int, rows: Int) {
         if (this.sshId == sshId && session?.isConnected == true) return
@@ -50,8 +66,6 @@ class TerminalViewModel(app: Application) : AndroidViewModel(app) {
         connectJob?.cancel()
         session?.close()
         session = null
-        val cols = lastCols
-        val rows = lastRows
         connectJob = viewModelScope.launch {
             state.value = TState.Connecting()
             val entity = mgr.sshRepo.byId(sshId)
@@ -71,9 +85,29 @@ class TerminalViewModel(app: Application) : AndroidViewModel(app) {
                 storedFingerprint = storedFpOverride ?: entity.hostKeyFingerprint,
             )
             try {
+                // Read the dimensions after the coroutine starts.  Compose may
+                // perform another layout between the first callback and this
+                // point (notably while the IME is being shown), so capturing
+                // them before launch can allocate a permanently narrow PTY.
+                val cols = lastCols.coerceAtLeast(20)
+                val rows = lastRows.coerceAtLeast(5)
                 val s = SshManager.connect(params, cols, rows)
                 session = s
-                val emu = TerminalEmulator(cols, rows) { resp -> runCatching { s.write(resp) } }
+
+                // The view can be laid out more than once while the connection is
+                // being established (for example when the IME appears).  The
+                // dimensions captured above are therefore not necessarily the
+                // dimensions of the currently visible terminal.  Start the
+                // emulator at the latest size and notify the server of any size
+                // change that happened during the handshake; otherwise the PTY
+                // remains stuck at the transient first-layout width and wraps
+                // output after only a few columns.
+                val currentCols = lastCols.coerceAtLeast(20)
+                val currentRows = lastRows.coerceAtLeast(5)
+                val emu = TerminalEmulator(currentCols, currentRows) { resp -> runCatching { s.write(resp) } }
+                if (currentCols != cols || currentRows != rows) {
+                    s.resize(currentCols, currentRows)
+                }
                 emulator.value = emu
                 state.value = TState.Connected
                 // 批量合并输出块：高吞吐场景（如 cat 大文件）下减少解析与重绘次数
