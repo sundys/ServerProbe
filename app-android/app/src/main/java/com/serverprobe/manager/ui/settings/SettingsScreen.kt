@@ -55,6 +55,8 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.serverprobe.manager.ui.components.GithubIcon
+import com.serverprobe.manager.ui.components.PickerFailureDialog
+import com.serverprobe.manager.ui.components.rememberSafLauncher
 import com.serverprobe.manager.update.UpdateManager
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -78,19 +80,33 @@ fun SettingsScreen(
     var passphrase by remember { mutableStateOf("") }
     var replaceAll by remember { mutableStateOf(false) }
 
-    val exportLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.CreateDocument("application/json"),
-    ) { uri ->
-        if (uri != null) {
-            vm.exportBackup(uri, passphrase.toCharArray())
-            passphrase = ""
-        }
-    }
-    val importLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.OpenDocument(),
-    ) { uri ->
-        if (uri != null) pendingImportUri = uri
-    }
+    // 备份导出/恢复走系统 SAF；与私钥选择同样的多通道回退（ColorOS 15 等需绕开 androidx 启动路径）
+    var safFailDetail by remember { mutableStateOf<String?>(null) }
+    val exportLauncher = rememberSafLauncher(
+        create = true,
+        suggestName = "",
+        onResult = { uri ->
+            if (uri != null) {
+                vm.exportBackup(uri, passphrase.toCharArray())
+                passphrase = ""
+            }
+        },
+        onAllFailed = { detail ->
+            safFailDetail = detail
+            com.serverprobe.manager.Diagnostics.log(ctx, "backup export fail: " + detail)
+        },
+    )
+    val importLauncher = rememberSafLauncher(
+        create = false,
+        suggestName = "",
+        onResult = { uri ->
+            if (uri != null) pendingImportUri = uri
+        },
+        onAllFailed = { detail ->
+            safFailDetail = detail
+            com.serverprobe.manager.Diagnostics.log(ctx, "backup import fail: " + detail)
+        },
+    )
 
     LaunchedEffect(message) {
         message?.let { (ok, msg) ->
@@ -188,7 +204,7 @@ fun SettingsScreen(
                         modifier = Modifier.weight(1f),
                     ) { Text("导出备份") }
                     Button(
-                        onClick = { importLauncher.launch(arrayOf("application/json", "text/*", "*/*")) },
+                        onClick = { importLauncher("application/json") },
                         enabled = !busy,
                         modifier = Modifier.weight(1f),
                     ) { Text("恢复备份") }
@@ -286,7 +302,7 @@ fun SettingsScreen(
                     enabled = passphrase.length >= 6,
                     onClick = {
                         pendingExport = false
-                        exportLauncher.launch("serverprobe-backup-${System.currentTimeMillis()}.json")
+                        exportLauncher("serverprobe-backup-${System.currentTimeMillis()}.json")
                     },
                 ) { Text("导出") }
             },
@@ -335,6 +351,9 @@ fun SettingsScreen(
 
     // 检测更新相关弹窗（新版本/下载进度/结果）
     UpdateDialogs(vm)
+
+    // 备份文件选择器全通道失败弹窗
+    safFailDetail?.let { PickerFailureDialog(detail = it, onDismiss = { safFailDetail = null }) }
 }
 
 @Composable
