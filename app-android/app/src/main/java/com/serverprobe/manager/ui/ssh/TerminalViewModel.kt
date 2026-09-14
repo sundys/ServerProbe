@@ -175,6 +175,11 @@ class TerminalViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** 用户键入：复位视图滚动（由 View 自身实现，此处仅确保版本刷新） */
+    fun scrollToBottomLocal() {
+        dataVersion.value++
+    }
+
     fun retry() {
         connect()
     }

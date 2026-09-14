@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.background
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.horizontalScroll
@@ -45,7 +46,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import android.util.TypedValue
 import androidx.compose.ui.viewinterop.AndroidView
+import kotlinx.coroutines.launch
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.serverprobe.manager.App
 import com.serverprobe.manager.terminal.TerminalView
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -61,9 +64,29 @@ fun TerminalScreen(
     val title by vm.title.collectAsState()
     val pendingFp by vm.pendingFingerprint.collectAsState()
     val ctx = LocalContext.current
-    var fontSizeSp by remember { mutableStateOf(13f) }
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
 
     var terminalView by remember { mutableStateOf<TerminalView?>(null) }
+    val savedFontSize by App.instance.settings.terminalFontSize.collectAsState(initial = 13f)
+    var fontSizeSp by remember { mutableStateOf(13f) }
+    var appliedSavedFont by remember { mutableStateOf(false) }
+    LaunchedEffect(savedFontSize) {
+        if (!appliedSavedFont && savedFontSize > 0f) {
+            appliedSavedFont = true
+            fontSizeSp = savedFontSize
+            terminalView?.setTextSizePx(
+                TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, fontSizeSp, ctx.resources.displayMetrics),
+            )
+        }
+    }
+    // 主题（日/夜）注入终端配色
+    val displayMode by App.instance.settings.displayMode.collectAsState(initial = com.serverprobe.manager.data.repo.DisplayMode.SYSTEM)
+    val isLight = when (displayMode) {
+        com.serverprobe.manager.data.repo.DisplayMode.LIGHT -> true
+        com.serverprobe.manager.data.repo.DisplayMode.DARK -> false
+        else -> !androidx.compose.foundation.isSystemInDarkTheme()
+    }
+    LaunchedEffect(isLight) { terminalView?.lightTheme = isLight }
 
     Scaffold(
         topBar = {
@@ -107,6 +130,7 @@ fun TerminalScreen(
                             setTextSizePx(TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, fontSizeSp, context.resources.displayMetrics))
                             onData = { vm.write(it) }
                             onSizeChanged = { c, r -> vm.onSize(sshId, c, r) }
+                            onUserInput = { vm.scrollToBottomLocal() }
                             terminalView = this
                         }
                     },
@@ -153,6 +177,28 @@ fun TerminalScreen(
                     }
                     else -> Unit
                 }
+                // 选择复制：长按拖选后浮出按钮
+                var showCopy by remember { mutableStateOf(false) }
+                LaunchedEffect(dataVersion) {
+                    showCopy = terminalView?.isSelecting == true
+                }
+                if (showCopy) {
+                    androidx.compose.material3.ExtendedFloatingActionButton(
+                        onClick = {
+                            val text = terminalView?.selectedText()
+                            if (text != null) {
+                                val cm = ctx.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                cm.setPrimaryClip(android.content.ClipData.newPlainText("term", text))
+                                android.widget.Toast.makeText(ctx, "已复制选中内容", android.widget.Toast.LENGTH_SHORT).show()
+                            }
+                            terminalView?.clearSelection()
+                            showCopy = false
+                        },
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(end = 12.dp, bottom = 12.dp),
+                    ) { Text("复制选中") }
+                }
             }
 
             // 控制键条
@@ -181,10 +227,12 @@ fun TerminalScreen(
                 ControlKey("A−") {
                     fontSizeSp = (fontSizeSp - 1f).coerceAtLeast(8f)
                     terminalView?.setTextSizePx(TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, fontSizeSp, ctx.resources.displayMetrics))
+                    scope.launch { App.instance.settings.setTerminalFontSize(fontSizeSp) }
                 }
                 ControlKey("A+") {
                     fontSizeSp = (fontSizeSp + 1f).coerceAtMost(28f)
                     terminalView?.setTextSizePx(TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, fontSizeSp, ctx.resources.displayMetrics))
+                    scope.launch { App.instance.settings.setTerminalFontSize(fontSizeSp) }
                 }
                 ControlKey("粘贴") {
                     val cm = ctx.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
