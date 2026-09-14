@@ -63,6 +63,7 @@ import com.serverprobe.manager.ui.components.formatBps
 import com.serverprobe.manager.ui.components.formatPct
 import com.serverprobe.manager.ui.components.formatTrafficMB
 import com.serverprobe.manager.ui.components.formatUptime
+import com.serverprobe.manager.ui.components.memDetail
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -172,7 +173,7 @@ fun DetailScreen(
                             MeterBar("CPU", st?.cpuPercent ?: 0.0, Modifier.fillMaxWidth(),
                                 detail = "核心 ${st?.cpuCores ?: 0} · ${formatPct(st?.cpuPercent ?: 0.0)}")
                             MeterBar("内存", st?.memPercent ?: 0.0, Modifier.fillMaxWidth(),
-                                detail = "${formatBytes(st?.memUsedBytes ?: 0)} / ${formatBytes(st?.memTotalBytes ?: 0)}")
+                                detail = memDetail(st?.memUsedBytes ?: 0, st?.memTotalBytes ?: 0))
                         }
                         Text(
                             "运行 ${formatUptime(st?.uptimeSec ?: 0.0)} · 进程 ${st?.procs ?: 0} · " +
@@ -214,7 +215,7 @@ fun DetailScreen(
                             MeterBar(
                                 "交换分区 Swap",
                                 s.swapUsedBytes * 100.0 / s.swapTotalBytes,
-                                detail = "${formatBytes(s.swapUsedBytes)} / ${formatBytes(s.swapTotalBytes)}",
+                                detail = memDetail(s.swapUsedBytes, s.swapTotalBytes),
                             )
                         }
                     }

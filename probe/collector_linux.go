@@ -56,6 +56,9 @@ func NewCollector(dataDir string) *Collector {
 		ProbeVersion: Version,
 		StartedAt:    c.started.Format(time.RFC3339),
 	}
+	if mi, err := readMemInfo(); err == nil {
+		c.info.MemTotal = mi["MemTotal"]
+	}
 	return c
 }
 
