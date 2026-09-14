@@ -21,7 +21,6 @@ import androidx.compose.ui.platform.LocalContext
 @Composable
 fun rememberSafLauncher(
     create: Boolean,
-    suggestName: String,
     onResult: (Uri?) -> Unit,
     onAllFailed: (String) -> Unit,
 ): (String) -> Unit {
@@ -40,7 +39,7 @@ fun rememberSafLauncher(
         onResult(r.data?.data)
     }
 
-    return { mime ->
+    return { fileName ->
         val failures = mutableListOf<String>()
         var launched = false
 
@@ -52,32 +51,32 @@ fun rememberSafLauncher(
         }
 
         if (create) {
-            // 导出：CreateDocument 各通道
-            attempt("CreateDocument") { createDoc.launch(suggestName) }
+            // 导出：参数是建议文件名，MIME 固定 application/json
+            attempt("CreateDocument") { createDoc.launch(fileName) }
             if (!launched && context is Activity) {
                 attempt("LegacyCreate") {
                     val intent = Intent(Intent.ACTION_CREATE_DOCUMENT)
                         .addCategory(Intent.CATEGORY_OPENABLE)
-                        .setType(mime.ifBlank { "application/json" })
-                        .putExtra(Intent.EXTRA_TITLE, suggestName)
+                        .setType("application/json")
+                        .putExtra(Intent.EXTRA_TITLE, fileName)
                     LegacyActivityResult.start(context, intent) { _, data -> onResult(data?.data) }
                 }
             }
         } else {
-            // 导入：OpenDocument / GetContent / Chooser / Legacy 各通道
-            attempt("OpenDocument") { openDoc.launch(arrayOf(mime.ifBlank { "*/*" })) }
-            attempt("GetContent") { getContent.launch(mime.ifBlank { "*/*" }) }
+            // 导入：不限类型便于浏览备份目录，恢复前有口令校验兜底
+            attempt("OpenDocument") { openDoc.launch(arrayOf("*/*")) }
+            attempt("GetContent") { getContent.launch("*/*") }
             attempt("Chooser") {
                 val intent = Intent(Intent.ACTION_GET_CONTENT)
                     .addCategory(Intent.CATEGORY_OPENABLE)
-                    .setType(mime.ifBlank { "*/*" })
+                    .setType("*/*")
                 startForResult.launch(Intent.createChooser(intent, null))
             }
             if (!launched && context is Activity) {
                 attempt("LegacyOpen") {
                     val intent = Intent(Intent.ACTION_OPEN_DOCUMENT)
                         .addCategory(Intent.CATEGORY_OPENABLE)
-                        .setType(mime.ifBlank { "*/*" })
+                        .setType("*/*")
                     LegacyActivityResult.start(context, intent) { _, data -> onResult(data?.data) }
                 }
             }

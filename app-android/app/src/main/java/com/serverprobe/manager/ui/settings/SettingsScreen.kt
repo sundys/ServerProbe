@@ -84,7 +84,6 @@ fun SettingsScreen(
     var safFailDetail by remember { mutableStateOf<String?>(null) }
     val exportLauncher = rememberSafLauncher(
         create = true,
-        suggestName = "",
         onResult = { uri ->
             if (uri != null) {
                 vm.exportBackup(uri, passphrase.toCharArray())
@@ -98,7 +97,6 @@ fun SettingsScreen(
     )
     val importLauncher = rememberSafLauncher(
         create = false,
-        suggestName = "",
         onResult = { uri ->
             if (uri != null) pendingImportUri = uri
         },

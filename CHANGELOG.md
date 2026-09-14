@@ -1,5 +1,11 @@
 # 更新摘要 / Changelog
 
+## v1.1.14
+
+**修复**
+- 修复 v1.1.13 备份导出仍失败的问题：导出的传统通道把**文件名误传为 MIME 类型**（`typ=xxx.json` 导致无应用可处理）；现 MIME 固定为 application/json，文件名仅作为建议标题传入
+- androidx CreateDocument 在 ColorOS 15 上的 requestCode 溢出异常仍由传统通道兜底（该通道实测可用）
+
 ## v1.1.13
 
 **修复**
