@@ -105,6 +105,8 @@ class TerminalViewModel(app: Application) : AndroidViewModel(app) {
                 val rows = lastRows.coerceAtLeast(5)
                 val s = SshManager.connect(params, cols, rows)
                 session = s
+                // 写入失败等致命错误由会话线程回调，只有这里能把原因带到界面上
+                s.onError = { msg -> state.value = TState.Closed(msg) }
 
                 // 握手/认证期间 View 可能多次上报网格尺寸（键盘弹出、进入动画
                 // 结束等）。onSize 已把 lastCols/lastRows 持续更新为最新值，
@@ -131,9 +133,10 @@ class TerminalViewModel(app: Application) : AndroidViewModel(app) {
                     runCatching { emu.feed(batch) }
                     dataVersion.value++
                 }
-                // 输出通道关闭 = 连接断开
+                // 输出通道关闭 = 连接结束。带上会话记录的原因（服务器关闭 / 读取中断 /
+                // 发送失败），避免界面只显示一句无从定位的"连接已断开"。
                 if (state.value is TState.Connected) {
-                    state.value = TState.Closed(null)
+                    state.value = TState.Closed(s.reason())
                 }
             } catch (e: HostKeyUnknownException) {
                 pendingFingerprint.value = e.fingerprint
@@ -161,18 +164,13 @@ class TerminalViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /**
-     * 发送用户输入。必须在 IO 线程执行：sshj 的通道写内部有窗口等待与
-     * 与读线程共享的锁，在 Android 主线程直接写会与传输线程竞争
-     * （桌面 JVM 上不复现，Android 线程调度下会触发服务器断开）。
+     * 发送用户输入。真正的通道写入由 [SshSession.write] 串行到它自己的专用线程上，
+     * 这里只是入队。**不能**每次按键都新建一个 `Dispatchers.IO` 协程去写通道：
+     * IO 是多线程池，连续两次输入会并发写同一个 sshj 通道，破坏其内部窗口/锁状态，
+     * 服务器随即以 "Disconnected" 断开（点键盘即断线的根因）。
      */
     fun write(bytes: ByteArray) {
-        viewModelScope.launch(Dispatchers.IO) {
-            try {
-                session?.write(bytes)
-            } catch (e: Exception) {
-                state.value = TState.Closed(e.message ?: "发送失败，连接已断开")
-            }
-        }
+        session?.write(bytes)
     }
 
     /** 用户键入：复位视图滚动（由 View 自身实现，此处仅确保版本刷新） */

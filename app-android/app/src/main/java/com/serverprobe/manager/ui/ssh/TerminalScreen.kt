@@ -1,6 +1,5 @@
 package com.serverprobe.manager.ui.ssh
 
-import android.view.inputmethod.InputMethodManager
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,10 +12,19 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.systemGestures
+import androidx.compose.foundation.layout.union
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.systemGestureExclusion
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.AlertDialog
@@ -67,6 +75,7 @@ fun TerminalScreen(
     val scope = androidx.compose.runtime.rememberCoroutineScope()
 
     var terminalView by remember { mutableStateOf<TerminalView?>(null) }
+    var showSelectionActions by remember { mutableStateOf(false) }
     val savedFontSize by App.instance.settings.terminalFontSize.collectAsState(initial = 10f)
     var fontSizeSp by remember { mutableStateOf(10f) }
     var appliedSavedFont by remember { mutableStateOf(false) }
@@ -111,6 +120,11 @@ fun TerminalScreen(
                 },
             )
         },
+        // 底部系统栏的让位交由按键条自己处理（见下方 Row），避免与
+        // systemGestures 让位叠加成双份空白
+        contentWindowInsets = WindowInsets.systemBars.only(
+            WindowInsetsSides.Top + WindowInsetsSides.Horizontal,
+        ),
     ) { padding ->
         Column(
             Modifier
@@ -131,6 +145,7 @@ fun TerminalScreen(
                             onData = { vm.write(it) }
                             onSizeChanged = { c, r -> vm.onSize(sshId, c, r) }
                             onUserInput = { vm.scrollToBottomLocal() }
+                            onSelectionChanged = { showSelectionActions = it }
                             terminalView = this
                         }
                     },
@@ -179,39 +194,61 @@ fun TerminalScreen(
                     }
                     else -> Unit
                 }
-                // 选择复制：长按拖选后浮出按钮
-                var showCopy by remember { mutableStateOf(false) }
-                LaunchedEffect(dataVersion) {
-                    showCopy = terminalView?.isSelecting == true
-                }
-                if (showCopy) {
-                    androidx.compose.material3.ExtendedFloatingActionButton(
-                        onClick = {
-                            val text = terminalView?.selectedText()
-                            if (text != null) {
-                                val cm = ctx.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-                                cm.setPrimaryClip(android.content.ClipData.newPlainText("term", text))
-                                android.widget.Toast.makeText(ctx, "已复制选中内容", android.widget.Toast.LENGTH_SHORT).show()
-                            }
-                            terminalView?.clearSelection()
-                            showCopy = false
-                        },
+                // 选择复制：长按拖选后浮出按钮。状态由 View 回调驱动——旧实现只在
+                // 收到新输出时刷新一次，长按后若没有输出则按钮永不出现，用户会卡在
+                // 选择模式里（点按不再聚焦、键盘也拉不起来）。
+                if (showSelectionActions) {
+                    Row(
                         modifier = Modifier
                             .align(Alignment.BottomEnd)
                             .padding(end = 12.dp, bottom = 12.dp),
-                    ) { Text("复制选中") }
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        FilledTonalButton(
+                            onClick = {
+                                terminalView?.clearSelection()
+                                showSelectionActions = false
+                                // 焦点交回终端并重新拉起输入法，用户可以立刻继续输入
+                                terminalView?.focusAndShowKeyboard()
+                            },
+                        ) { Text("取消") }
+                        androidx.compose.material3.ExtendedFloatingActionButton(
+                            onClick = {
+                                val text = terminalView?.selectedText()
+                                if (text != null) {
+                                    val cm = ctx.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                    cm.setPrimaryClip(android.content.ClipData.newPlainText("term", text))
+                                    android.widget.Toast.makeText(ctx, "已复制选中内容", android.widget.Toast.LENGTH_SHORT).show()
+                                }
+                                terminalView?.clearSelection()
+                                showSelectionActions = false
+                                terminalView?.focusAndShowKeyboard()
+                            },
+                        ) { Text("复制选中") }
+                    }
                 }
             }
 
-            // 控制键条
+            // 控制键条。注意：这一条位于屏幕最底部，正处在系统"手势带"内——
+            // 全屏/导航栏隐藏时 WindowInsets.systemBars 为 0，但 systemGestures
+            // 依然存在，起手于该区域的横向拖动会被系统截走，表现为"划不动"。
+            // 因此显式让开手势带，并申请手势排除。
             Row(
                 Modifier
                     .fillMaxWidth()
+                    .windowInsetsPadding(
+                        WindowInsets.systemGestures
+                            .union(WindowInsets.navigationBars)
+                            .only(WindowInsetsSides.Bottom),
+                    )
+                    .systemGestureExclusion()
                     .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 6.dp, vertical = 4.dp),
+                    .padding(horizontal = 6.dp, vertical = 6.dp),
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                ControlKey("键盘") { terminalView?.toggleKeyboard() }
                 ControlKey("ESC") { terminalView?.send("\u001B") }
                 ControlKey("TAB") { terminalView?.send("\t") }
                 ControlKey("↑") { terminalView?.send("\u001B[A") }
@@ -269,9 +306,8 @@ fun TerminalScreen(
             // 不能作为 PTY 的最终尺寸；此处按当前屏幕真实列数再上报一次，
             // 确保服务器折行宽度与屏幕一致（否则输出只占屏幕左半边）。
             terminalView?.reportSizeNow()
-            terminalView?.requestFocus()
-            val imm = ctx.getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as InputMethodManager
-            imm.showSoftInput(terminalView, 0)
+            // focusAndShowKeyboard 内部延后一帧调用，避免输入法被窗口焦点问题吞掉
+            terminalView?.focusAndShowKeyboard()
         }
     }
 

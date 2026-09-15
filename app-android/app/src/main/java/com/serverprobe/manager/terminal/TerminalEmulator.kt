@@ -14,8 +14,78 @@ class TerminalEmulator(
         const val DEFAULT_FG = -1
         const val DEFAULT_BG = -2
 
-        /** xterm 256 色板 */
+        /**
+         * 宽字符右半格的占位符。
+         *
+         * 缓冲区的每一格固定对应屏幕的一列，而宽字符（汉字/假名/全角标点/emoji）
+         * 占**两列**：左格存字符本身，右格存本占位符，绘制时由左格整字覆盖右格。
+         */
+        const val WIDE_TAIL: Char = '\u0000'
+
+        /**
+         * 一个字符占用的列数（East Asian Width）。
+         * 0 = 不单独占格（宽字符右半格、组合记号、代理对低位），1 = 半角，2 = 全角。
+         *
+         * 汉字、假名、全角标点在终端里一律占两列。此前模拟器对每个字符都只前进
+         * 一列，于是：
+         *  - 光标位置 `cx * cellW` 比实际字形结束位置**左移一半** —— 提示符
+         *    「请输入数字：」后面光标停在字中间；
+         *  - 自动折行判定偏移，脚本用全角符号画的菜单/表格整体错列；
+         *  - 服务端按 `ESC[r;cH` 定位（其 wcwidth 认为汉字占两列）时同样错位。
+         */
+        fun cellWidth(c: Char): Int {
+            if (c == WIDE_TAIL) return 0
+            if (c.isLowSurrogate()) return 0 // 代理对低位：并入前一格绘制
+            if (c.isHighSurrogate()) return 2 // 补充平面字符（emoji 等）
+            val u = c.code
+            if (u < 0x0300) return 1 // ASCII 与拉丁扩展
+            if (isZeroWidth(u)) return 0
+            return if (isWide(u)) 2 else 1
+        }
+
+        /** 零宽字符：组合记号、零宽连接符、变体选择符 */
+        private fun isZeroWidth(u: Int): Boolean =
+            u in 0x0300..0x036F ||
+                u in 0x0483..0x0489 ||
+                u in 0x1AB0..0x1AFF ||
+                u in 0x200B..0x200F ||
+                u in 0x2060..0x2064 ||
+                u in 0x20D0..0x20FF ||
+                u in 0xFE00..0xFE0F ||
+                u in 0xFE20..0xFE2F
+
+        /** 东亚宽字符与全角形式 */
+        private fun isWide(u: Int): Boolean =
+            u in 0x1100..0x115F || // 谚文字母
+                u in 0x2E80..0x303E || // 康熙部首 / CJK 部首 / CJK 符号与标点
+                u in 0x3041..0x33FF || // 平假名 ~ CJK 兼容
+                u in 0x3400..0x4DBF || // CJK 扩展 A
+                u in 0x4E00..0x9FFF || // CJK 统一表意
+                u in 0xA000..0xA4CF || // 彝文
+                u in 0xA960..0xA97F || // 谚文字母扩展 A
+                u in 0xAC00..0xD7A3 || // 谚文音节
+                u in 0xF900..0xFAFF || // CJK 兼容表意
+                u in 0xFE10..0xFE19 || // 竖排标点
+                u in 0xFE30..0xFE6F || // CJK 兼容形式 / 小写变体
+                u in 0xFF00..0xFF60 || // 全角形式
+                u in 0xFFE0..0xFFE6 || // 全角符号
+                u in 0x1F300..0x1F64F || // 表情符号
+                u in 0x1F680..0x1F6FF ||
+                u in 0x1F900..0x1F9FF
+
+        /** xterm 256 色板（**裸 RGB**，不含 alpha；见 [colorOf]） */
         val PALETTE: IntArray = buildPalette()
+
+        /**
+         * 调色板取色，返回**不透明 ARGB**。
+         *
+         * 必须统一走这里，不要直接把 `PALETTE[i]` 赋给 `Paint.color`：
+         * `Paint.color` 是 **ARGB**，而调色板里存的是 `0xRRGGBB`，高 8 位的 alpha
+         * 恒为 0 —— 即**完全透明**。这会让所有显式着色的内容一律画不出来：
+         * 脚本里用 `\033[32m` 包起来的菜单序号、状态取值，以及所有 ANSI 背景色块，
+         * 都会整段"消失"，而只有用默认色的文字正常显示。
+         */
+        fun colorOf(index: Int): Int = 0xFF000000.toInt() or PALETTE[index.coerceIn(0, 255)]
 
         private fun buildPalette(): IntArray {
             val base = intArrayOf(
@@ -44,12 +114,27 @@ class TerminalEmulator(
 
         fun clearLine(y: Int, fromX: Int = 0, toX: Int = cols - 1) {
             if (y < 0 || y >= rows) return
-            for (x in fromX..toX) {
-                if (x < 0 || x >= cols) continue
+            var a = fromX.coerceAtLeast(0)
+            var b = toX.coerceAtMost(cols - 1)
+            if (a > b) return
+            // 边界落在宽字符中间时连同另半格一起清，否则会留下半个汉字
+            if (a > 0 && chars[y * cols + a] == WIDE_TAIL) a--
+            if (b + 1 < cols && chars[y * cols + b + 1] == WIDE_TAIL) b++
+            for (x in a..b) {
                 chars[y * cols + x] = ' '
                 fg[y * cols + x] = DEFAULT_FG
                 bg[y * cols + x] = DEFAULT_BG
                 attr[y * cols + x] = 0
+            }
+        }
+
+        /** 修正整体搬移后被切断的宽字符：孤立的右半格清成空格，避免画出半个汉字 */
+        fun repairRow(y: Int) {
+            val base = y * cols
+            for (x in 0 until cols) {
+                if (chars[base + x] == WIDE_TAIL && (x == 0 || cellWidth(chars[base + x - 1]) != 2)) {
+                    chars[base + x] = ' '
+                }
             }
         }
 
@@ -118,10 +203,13 @@ class TerminalEmulator(
                     val cp = utf8Accum
                     resetUtf8()
                     if (cp > 0xFFFF) {
-                        // 代理对
+                        // 补充平面字符（emoji 等）：整体作为**一个**宽字符落格，
+                        // 高位代理占左格、低位代理占右格，绘制时再合并成整字
                         val v = cp - 0x10000
-                        process(((0xD800 + (v shr 10)) and 0xFFFF).toChar())
-                        process(((0xDC00 + (v and 0x3FF)) and 0xFFFF).toChar())
+                        processSupplementary(
+                            ((0xD800 + (v shr 10)) and 0xFFFF).toChar(),
+                            ((0xDC00 + (v and 0x3FF)) and 0xFFFF).toChar(),
+                        )
                     } else {
                         process(cp.toChar())
                     }
@@ -149,6 +237,25 @@ class TerminalEmulator(
         for (b in bytes) feedByte(b.toInt() and 0xFF)
     }
 
+    /**
+     * 补充平面字符（emoji 等）。在正文中整体作为一个宽字符落格；
+     * 若处于转义序列（如 OSC 标题）中则原样交给状态机吞掉。
+     */
+    private fun processSupplementary(high: Char, low: Char) {
+        if (state == State.NONE) putCell(high, low) else { process(high); process(low) }
+    }
+
+    /**
+     * 光标吸附：落在宽字符右半格时移回其左半格。
+     * 否则后续写入会覆盖右半格，把汉字画成半个。
+     */
+    private fun snapToHead(x: Int): Int {
+        var c = x.coerceIn(0, cols - 1)
+        val b = buf
+        if (c > 0 && b.chars[cy * cols + c] == WIDE_TAIL) c--
+        return c
+    }
+
     private fun process(c: Char) {
         when (state) {
             State.NONE -> when (c) {
@@ -163,7 +270,7 @@ class TerminalEmulator(
                     wrapPending = false
                 }
                 '\n', '\u000B', '\u000C' -> lineFeed()
-                '\u0008' -> if (cx > 0) cx--
+                '\u0008' -> cx = snapToHead(cx - 1)
                 '\t' -> cx = (((cx / 8) + 1) * 8).coerceAtMost(cols - 1)
                 '\u0007' -> Unit // BEL 忽略
                 '\u0000', '\u0001', '\u0002', '\u0003', '\u0004', '\u0005', '\u0006' -> Unit
@@ -238,14 +345,14 @@ class TerminalEmulator(
         when (final) {
             'A' -> cy = (cy - p(0, 1)).coerceAtLeast(0)
             'B', 'e' -> cy = (cy + p(0, 1)).coerceAtMost(rows - 1)
-            'C', 'a' -> cx = (cx + p(0, 1)).coerceAtMost(cols - 1)
-            'D' -> cx = (cx - p(0, 1)).coerceAtLeast(0)
+            'C', 'a' -> cx = snapToHead(cx + p(0, 1))
+            'D' -> cx = snapToHead(cx - p(0, 1))
             'E' -> { cy = (cy + p(0, 1)).coerceAtMost(rows - 1); cx = 0 }
             'F' -> { cy = (cy - p(0, 1)).coerceAtLeast(0); cx = 0 }
-            'G', '`' -> cx = (p(0, 1) - 1).coerceIn(0, cols - 1)
+            'G', '`' -> cx = snapToHead(p(0, 1) - 1)
             'H', 'f' -> {
                 cy = (p(0, 1) - 1).coerceIn(0, rows - 1)
-                cx = (p(1, 1) - 1).coerceIn(0, cols - 1)
+                cx = snapToHead(p(1, 1) - 1)
                 wrapPending = false
             }
             'd' -> cy = (p(0, 1) - 1).coerceIn(0, rows - 1)
@@ -366,7 +473,15 @@ class TerminalEmulator(
         return 16 + nearest(r) * 36 + nearest(g) * 6 + nearest(b)
     }
 
-    private fun putChar(c: Char) {
+    private fun putChar(c: Char) = putCell(c, WIDE_TAIL)
+
+    /**
+     * 写入一个字符到网格。宽字符占两格：左格存字符，右格存 [tail]
+     * （普通宽字符用 [WIDE_TAIL]；补充平面字符用代理对低位，绘制时合并成整字）。
+     */
+    private fun putCell(c: Char, tail: Char) {
+        var w = cellWidth(c)
+        if (w == 0) return // 零宽字符不单独占格
         if (wrapPending) {
             wrapPending = false
             cx = 0
@@ -377,16 +492,33 @@ class TerminalEmulator(
         if (cx > cols - 1) cx = cols - 1
         if (cy < 0) cy = 0
         if (cy > rows - 1) cy = rows - 1
+        // 宽字符在最后一列放不下：标准行为是整字折到下一行
+        if (w == 2 && cx == cols - 1) {
+            if (autoWrap) {
+                cx = 0
+                lineFeed()
+            } else {
+                w = 1 // 关闭自动换行时退化为单格，避免越界写到相邻行
+            }
+        }
         val b = buf
         val idx = cy * cols + cx
         b.chars[idx] = c
         b.fg[idx] = curFg
         b.bg[idx] = curBg
         b.attr[idx] = curAttr.toByte()
-        if (cx == cols - 1) {
+        if (w == 2 && cx + 1 < cols) {
+            val t = idx + 1
+            b.chars[t] = tail
+            b.fg[t] = curFg
+            b.bg[t] = curBg
+            b.attr[t] = curAttr.toByte()
+        }
+        if (cx + w >= cols) {
+            cx = cols - 1
             if (autoWrap) wrapPending = true
         } else {
-            cx++
+            cx += w
         }
     }
 
@@ -483,6 +615,7 @@ class TerminalEmulator(
             b.attr[dst] = b.attr[src]
         }
         buf.clearLine(cy, cx, cx + count - 1)
+        b.repairRow(cy)
     }
 
     private fun deleteChars(n: Int) {
@@ -497,6 +630,7 @@ class TerminalEmulator(
             b.attr[dst] = b.attr[src]
         }
         buf.clearLine(cy, cols - count, cols - 1)
+        b.repairRow(cy)
     }
 
     private fun resetAll() {
@@ -513,6 +647,9 @@ class TerminalEmulator(
     private fun clampCursor() {
         cx = cx.coerceIn(0, cols - 1)
         cy = cy.coerceIn(0, rows - 1)
+        // 宽字符右半格不是合法落点，吸附回左半格
+        val b = buf
+        if (cx > 0 && b.chars[cy * cols + cx] == WIDE_TAIL) cx--
     }
 
     /** 缩放缓冲区（与 feed 互斥） */
@@ -538,6 +675,8 @@ class TerminalEmulator(
             System.arraycopy(src.fg, y * src.cols, dst.fg, y * dst.cols, w)
             System.arraycopy(src.bg, y * src.cols, dst.bg, y * dst.cols, w)
             System.arraycopy(src.attr, y * src.cols, dst.attr, y * dst.cols, w)
+            // 列宽变化可能在右边界切断宽字符，修掉残留的半格
+            dst.repairRow(y)
         }
     }
 
@@ -557,7 +696,10 @@ class TerminalEmulator(
         for (y in 0 until rows) {
             var lineEnd = cols
             while (lineEnd > 0 && charAt(y, lineEnd - 1) == ' ') lineEnd--
-            for (x in 0 until lineEnd) sb.append(charAt(y, x))
+            for (x in 0 until lineEnd) {
+                val ch = charAt(y, x)
+                if (ch != WIDE_TAIL) sb.append(ch) // 宽字符右半格占位符不导出
+            }
             sb.append('\n')
         }
         return sb.toString()
