@@ -41,6 +41,12 @@ jobs:
   # ---------- Android App：armeabi-v7a + arm64-v8a ----------
   build-android:
     runs-on: ubuntu-latest
+    env:
+      # 正式签名：4 个环境变量，值取自仓库 Secrets（配置步骤见 README「发布签名」）
+      SIGNING_KEYSTORE_BASE64: ${{ secrets.SIGNING_KEYSTORE_BASE64 }}
+      SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
+      SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
+      SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
 
@@ -51,11 +57,34 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
+      - name: Verify signing secrets
+        run: |
+          missing=""
+          for name in SIGNING_KEYSTORE_BASE64 SIGNING_STORE_PASSWORD SIGNING_KEY_ALIAS SIGNING_KEY_PASSWORD; do
+            [ -n "$(printenv "$name")" ] || missing="$missing $name"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::缺少签名环境变量:$missing —— 请在仓库 Settings → Secrets and variables → Actions 中配置（步骤见 README「发布签名」）"
+            exit 1
+          fi
+          echo "签名环境变量已就绪，Android 正式包将使用环境变量中的 keystore 签名。"
+
+      - name: Resolve app version
+        id: appver
+        run: |
+          case "${GITHUB_REF}" in
+            refs/tags/*) echo "value=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT" ;;
+            *)           echo "value=" >> "$GITHUB_OUTPUT" ;;
+          esac
+
       - name: Build release APKs
         working-directory: app-android
+        env:
+          APP_VERSION: ${{ steps.appver.outputs.value }}
         run: |
           chmod +x gradlew
-          ./gradlew assembleRelease -PappVersion=${GITHUB_REF_NAME#v} --no-daemon
+          # 标签触发时以标签号作为版本名；手动触发（无标签）沿用 gradle 里的默认版本名
+          ./gradlew assembleRelease ${APP_VERSION:+-PappVersion=$APP_VERSION} --no-daemon
 
       - name: Rename APKs
         working-directory: app-android/app/build/outputs/apk/release
@@ -71,6 +100,8 @@ jobs:
   # ---------- 发布 Release（含更新摘要）----------
   release:
     needs: [ build-probe, build-android ]
+    # 仅标签触发时创建 Release；workflow_dispatch 手动触发只产出可下载的 APK 产物
+    if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
