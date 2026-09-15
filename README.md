@@ -53,7 +53,65 @@ cd app-android
 
 要求：JDK 17、Android SDK (compileSdk 36)。正式发布直接 **推送 `v*` 标签**，GitHub Actions 自动编译 Android（armv7/arm64）与探针（amd64/arm64）并创建带更新摘要的 Release；本地构建正式包用 `./gradlew assembleRelease -PappVersion=x.y.z`。
 
-> 签名说明：仓库内 `app/signing/serverprobe.keystore` 为个人项目固定签名（保证更新包可覆盖安装）。如公开维护，建议改用 GitHub Secrets 注入签名。
+### 发布签名（环境变量注入）
+
+CI 编译 Android 正式包时，签名信息**全部从环境变量读取**，口令不写进构建脚本。共 4 个变量：
+
+| 环境变量 | 含义 |
+| --- | --- |
+| `SIGNING_KEYSTORE_BASE64` | keystore 文件的 **Base64** 内容（整个文件编码后的字符串，允许带换行） |
+| `SIGNING_STORE_PASSWORD` | keystore 库口令（store password） |
+| `SIGNING_KEY_ALIAS` | 密钥别名（key alias） |
+| `SIGNING_KEY_PASSWORD` | 密钥口令（key password） |
+
+四个变量（或 Secrets）**齐全**时使用环境变量中的签名；否则回退到仓库内的 `app-android/app/signing/serverprobe.keystore`，保证本机仍可直接出正式包。
+
+**第 1 步：把 keystore 编码为 Base64**
+
+```powershell
+# Windows PowerShell（复制到剪贴板）
+[Convert]::ToBase64String([IO.File]::ReadAllBytes("app-android\app\signing\serverprobe.keystore")) | Set-Clipboard
+```
+
+```bash
+# Linux（-w 0 表示不换行；不换行或带换行都可被识别）
+base64 -w 0 app-android/app/signing/serverprobe.keystore
+
+# macOS
+base64 -i app-android/app/signing/serverprobe.keystore
+```
+
+**第 2 步：在 GitHub 仓库中创建 4 个 Secret**
+
+网页端：`Settings → Secrets and variables → Actions → New repository secret`，名称与上表完全一致，逐个创建（`SIGNING_KEYSTORE_BASE64` 粘贴第 1 步得到的整段字符串）。
+
+或用 `gh` CLI：
+
+```bash
+gh secret set SIGNING_KEYSTORE_BASE64 --body "$(base64 -w 0 app-android/app/signing/serverprobe.keystore)"
+gh secret set SIGNING_STORE_PASSWORD
+gh secret set SIGNING_KEY_ALIAS
+gh secret set SIGNING_KEY_PASSWORD
+```
+
+后三条会交互式提示输入口令（也可加 `--body "<口令>"`）。Secret 一经保存即可，不用担心换行符——构建脚本会先剔除空白再解码。
+
+**第 3 步：验证**
+
+`Actions → Release ServerProbe → Run workflow` 手动触发一次。工作流会先校验 4 个变量是否齐全（缺失则明确报错并列出缺哪一个），随后编译并上传 APK 产物；**手动触发不会创建 Release**，正式发版仍由推送 `v*` 标签触发。构建日志开头会打印 `[signing] 使用环境变量注入的 keystore -> …`，可据此确认签名来源。
+
+**本机临时使用环境变量**
+
+```powershell
+$env:SIGNING_KEYSTORE_BASE64 = [Convert]::ToBase64String([IO.File]::ReadAllBytes("app-android\app\signing\serverprobe.keystore"))
+$env:SIGNING_STORE_PASSWORD  = "你的库口令"
+$env:SIGNING_KEY_ALIAS       = "serverprobe"
+$env:SIGNING_KEY_PASSWORD    = "你的密钥口令"
+cd app-android; ./gradlew assembleRelease
+```
+
+> 安全提示：仓库内的 `app-android/app/signing/serverprobe.keystore` 为个人项目固定签名（保证更新包可覆盖安装），其口令也写在构建脚本里。既然 CI 已支持环境变量注入，若日后要公开维护，建议**把该文件移出仓库**并只通过 Secrets 分发（本地留一份备份即可），否则私钥等同于公开。
+> 注意：换用新签名会导致与旧包签名不一致，用户需卸载重装；请固定使用同一份 keystore。
 
 ## App 使用
 
