@@ -20,6 +20,12 @@ class HostKeyUnknownException(val fingerprint: String) : Exception("HOST_KEY_UNK
 
 /**
  * 已建立的 SSH 交互会话。output 为从服务器收到的字节块流。
+ *
+ * **所有通道写操作（用户输入、终端应答、window-change）都被串行到一条专用线程上。**
+ * sshj 的 channel 写入不是线程安全的：早先版本每次按键都在 `Dispatchers.IO` 上新建
+ * 一个协程直接写通道（IO 是 64 线程池），两次快速输入即会并发写同一个 channel，
+ * 与传输读线程竞争内部的窗口/锁状态，服务器会以 "Disconnected" 直接断开——表现为
+ * "输入/点一下键盘就连接中断"。串行化后所有请求按提交顺序单线程执行。
  */
 class SshSession internal constructor(
     private val client: SSHClient,
@@ -28,7 +34,22 @@ class SshSession internal constructor(
 ) {
     private val outChannel = Channel<ByteArray>(Channel.UNLIMITED)
     val output: Channel<ByteArray> = outChannel
+
+    @Volatile
     private var closed = false
+
+    /** 会话终止原因（null 表示尚未结束），供界面显示"为什么断开" */
+    @Volatile
+    private var endReason: String? = null
+
+    /** 写/控制请求失败时的回调（由 ViewModel 转成界面状态） */
+    @Volatile
+    var onError: ((String) -> Unit)? = null
+
+    /** 唯一的通道操作线程：提交顺序 = 执行顺序 */
+    private val io = java.util.concurrent.Executors.newSingleThreadExecutor { r ->
+        Thread(r, "ssh-io").apply { isDaemon = true }
+    }
 
     init {
         val input = shell.inputStream
@@ -37,10 +58,17 @@ class SshSession internal constructor(
             try {
                 while (!closed) {
                     val n = input.read(buf)
-                    if (n < 0) break
+                    if (n < 0) {
+                        // 服务器主动关闭（正常退出/EOT），与本地断开要区分开
+                        if (endReason == null) endReason = "服务器已关闭会话"
+                        break
+                    }
                     if (n > 0) outChannel.trySend(buf.copyOf(n))
                 }
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                if (endReason == null) {
+                    endReason = "读取中断：${e.message ?: e.javaClass.simpleName}"
+                }
             } finally {
                 outChannel.close()
             }
@@ -50,27 +78,49 @@ class SshSession internal constructor(
         }
     }
 
-    val stdin: java.io.OutputStream get() = shell.outputStream
+    /** 终止原因，供 UI 展示（比原来的"无理由已断开"更能定位问题） */
+    fun reason(): String? = endReason
 
-    /** PTY 窗口尺寸变更（window-change 请求） */
+    /** PTY 窗口尺寸变更（window-change 请求），串行执行 */
     fun resize(cols: Int, rows: Int) {
-        runCatching { shell.changeWindowDimensions(cols, rows, 0, 0) }
+        if (closed) return
+        io.execute {
+            if (closed) return@execute
+            try {
+                shell.changeWindowDimensions(cols, rows, 0, 0)
+            } catch (_: Exception) {
+                // 尺寸同步失败多为通道已关闭，属于可忽略的瞬时错误，不主动断开会话；
+                // 真正致命的是写入失败（见 write），由 onError 上报
+            }
+        }
     }
 
+    /**
+     * 写入通道。只做入队（开销极小，可在任意线程调用），实际写入在 ssh-io 线程上
+     * 按顺序执行；失败时终止会话并回调 onError。
+     */
     fun write(bytes: ByteArray) {
-        try {
-            stdin.write(bytes)
-            stdin.flush()
-        } catch (e: Exception) {
-            close()
-            throw SshException("连接已断开: ${e.message}")
+        if (closed || bytes.isEmpty()) return
+        io.execute {
+            if (closed) return@execute
+            try {
+                val out = shell.outputStream
+                out.write(bytes)
+                out.flush()
+            } catch (e: Exception) {
+                val msg = "发送失败，连接已断开：${e.message ?: e.javaClass.simpleName}"
+                if (endReason == null) endReason = msg
+                close()
+                onError?.invoke(msg)
+            }
         }
     }
 
     fun close() {
         if (closed) return
         closed = true
-        runCatching { client.disconnect() }
+        // disconnect 也走同一条线程，避免与进行中的写入竞争传输状态
+        io.execute { runCatching { client.disconnect() } }
         outChannel.close()
     }
 
