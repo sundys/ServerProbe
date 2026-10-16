@@ -4,12 +4,14 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.serverprobe.manager.App
+import com.serverprobe.manager.Diagnostics
 import com.serverprobe.manager.data.db.AUTH_KEY
 import com.serverprobe.manager.data.db.AUTH_PASSWORD
 import com.serverprobe.manager.terminal.TerminalEmulator
 import com.serverprobe.manager.ssh.HostKeyUnknownException
 import com.serverprobe.manager.ssh.SshManager
 import com.serverprobe.manager.ssh.SshSession
+import com.serverprobe.manager.ssh.SshSessionKeeper
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -76,6 +78,7 @@ class TerminalViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun connect(storedFpOverride: String? = null) {
         connectJob?.cancel()
+        SshSessionKeeper.detach(session)
         session?.close()
         session = null
         connectJob = viewModelScope.launch {
@@ -107,6 +110,14 @@ class TerminalViewModel(app: Application) : AndroidViewModel(app) {
                 session = s
                 // 写入失败等致命错误由会话线程回调，只有这里能把原因带到界面上
                 s.onError = { msg -> state.value = TState.Closed(msg) }
+                // 切后台保活：App 退到后台时由前台服务顶住进程（不被冻结/回收），
+                // 满 1 分钟则回调这里断开。**必须先置「已断开」再关会话**——输出泵
+                // 收尾时只在状态仍为「已连接」时才用会话自身的原因覆盖，先改状态
+                // 才能把"后台超时"的原因显示出来。
+                SshSessionKeeper.attach(s) {
+                    state.value = TState.Closed("App 切到后台超过 ${SshSessionKeeper.backgroundGraceText}")
+                    runCatching { s.close() }
+                }
 
                 // 握手/认证期间 View 可能多次上报网格尺寸（键盘弹出、进入动画
                 // 结束等）。onSize 已把 lastCols/lastRows 持续更新为最新值，
@@ -135,6 +146,7 @@ class TerminalViewModel(app: Application) : AndroidViewModel(app) {
                 }
                 // 输出通道关闭 = 连接结束。带上会话记录的原因（服务器关闭 / 读取中断 /
                 // 发送失败），避免界面只显示一句无从定位的"连接已断开"。
+                SshSessionKeeper.detach(s)
                 if (state.value is TState.Connected) {
                     state.value = TState.Closed(s.reason())
                 }
@@ -183,7 +195,18 @@ class TerminalViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     override fun onCleared() {
-        session?.close()
+        val s = session
+        // 后台状态下 ViewModel 被回收 = Activity 被系统销毁（开发者选项"不保留活动"、
+        // 个别 ROM 的激进清理）。这不是"切后台"本身应有的行为，前台服务也救不了，
+        // 落盘便于日后取证（诊断日志可复制反馈）。
+        if (s != null && !SshSessionKeeper.isAppForeground()) {
+            Diagnostics.log(
+                getApplication<Application>(),
+                "terminal session closed while app in background: ViewModel 被回收（Activity 被系统销毁？）",
+            )
+        }
+        SshSessionKeeper.detach(s)
+        s?.close()
         session = null
         super.onCleared()
     }

@@ -6,6 +6,12 @@
     <!-- 应用内更新：允许唤起安装器安装下载的 APK -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
+    <!-- SSH 终端会话期间切到后台：用前台服务顶住进程，1 分钟内不被系统冻结/回收 -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <!-- Android 13+ 展示保活通知；未授予时服务照常运行，只是通知不显示 -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
     <!-- 远程（ZCode WebView）：网页可能请求摄像头/麦克风，上传附件需读取媒体 -->
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
@@ -58,6 +64,16 @@
                 <data android:mimeType="text/plain" />
             </intent-filter>
         </activity>
+
+        <!-- SSH 终端：切后台保活（仅在"有活跃会话 且 App 在后台"时运行，见 SshSessionKeeper） -->
+        <service
+            android:name=".ssh.SshKeepAliveService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="保持用户主动建立的 SSH 终端会话在短暂切到后台期间不被系统冻结或回收" />
+        </service>
 
         <provider
             android:name="androidx.core.content.FileProvider"

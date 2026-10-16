@@ -38,6 +38,8 @@ class App : Application() {
         probeRepo = ProbeRepository(db.probeHostDao(), sshRepo, settings, appScope)
         backupManager = BackupManager(db, settings, com.serverprobe.manager.remote.LinkStore(this))
         probeRepo.start()
+        // 终端会话的「切后台保活」需要知道 App 何时进出前台（见 SshSessionKeeper）
+        registerActivityLifecycleCallbacks(com.serverprobe.manager.ssh.SshSessionKeeper.activityLifecycleCallbacks())
         installCrashHook()
     }
 
