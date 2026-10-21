@@ -7,6 +7,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -24,6 +26,7 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.systemGestureExclusion
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -32,6 +35,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -54,6 +58,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import android.util.TypedValue
 import androidx.compose.ui.viewinterop.AndroidView
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.serverprobe.manager.App
@@ -76,6 +81,7 @@ fun TerminalScreen(
 
     var terminalView by remember { mutableStateOf<TerminalView?>(null) }
     var showSelectionActions by remember { mutableStateOf(false) }
+    var showCtrlPanel by remember { mutableStateOf(false) }
     val savedFontSize by App.instance.settings.terminalFontSize.collectAsState(initial = 10f)
     var fontSizeSp by remember { mutableStateOf(10f) }
     var appliedSavedFont by remember { mutableStateOf(false) }
@@ -248,6 +254,7 @@ fun TerminalScreen(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                ControlKey("Ctrl…") { showCtrlPanel = true }
                 ControlKey("键盘") { terminalView?.toggleKeyboard() }
                 ControlKey("ESC") { terminalView?.send("\u001B") }
                 ControlKey("TAB") { terminalView?.send("\t") }
@@ -299,6 +306,24 @@ fun TerminalScreen(
         )
     }
 
+    // Ctrl 快捷键面板：手机软键盘没有 Ctrl，nano 等全屏程序的保存/退出等操作
+    // 只能靠控制码触发，这里集中提供。
+    if (showCtrlPanel) {
+        CtrlPanelDialog(
+            onDismiss = { showCtrlPanel = false },
+            onPick = { letter ->
+                terminalView?.send(byteArrayOf((letter.code and 0x1F).toByte()))
+                showCtrlPanel = false
+                // 对话框关闭会抢走输入焦点并收起输入法；等窗口真正销毁后再交还，
+                // 否则 showSoftInput 会被系统静默丢弃（例如 ^O 之后还要输文件名）。
+                scope.launch {
+                    delay(150)
+                    terminalView?.focusAndShowKeyboard()
+                }
+            },
+        )
+    }
+
     // 连接建立后聚焦终端并拉起软键盘（仅一次，不随输出重绘重复触发）
     LaunchedEffect(emu) {
         if (emu != null) {
@@ -327,5 +352,76 @@ private fun ControlKey(label: String, onClick: () -> Unit) {
         contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
     ) {
         Text(label, fontSize = 12.sp)
+    }
+}
+
+/** 面板里的常用键：字母 + 中文说明（说明仅用于展示） */
+private data class CtrlShortcut(val letter: Char, val desc: String)
+
+private val CTRL_COMMON = listOf(
+    CtrlShortcut('O', "保存"),
+    CtrlShortcut('X', "退出"),
+    CtrlShortcut('W', "搜索"),
+    CtrlShortcut('K', "剪切行"),
+    CtrlShortcut('U', "粘贴行"),
+    CtrlShortcut('R', "读文件"),
+)
+
+/**
+ * Ctrl 快捷键面板。手机软键盘发不出 Ctrl 组合，这里点一下即发送对应的
+ * ASCII 控制码（Ctrl+A = 0x01 … Ctrl+Z = 0x1A），覆盖 nano 的 ^O/^X 等。
+ */
+@Composable
+private fun CtrlPanelDialog(onDismiss: () -> Unit, onPick: (Char) -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Ctrl 快捷键") },
+        text = {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Text(
+                    "nano：^O 保存、^X 退出。点选即发送，发送后键盘自动恢复。",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    CTRL_COMMON.chunked(3).forEach { row ->
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            row.forEach { key ->
+                                CtrlPanelKey("^${key.letter} ${key.desc}", Modifier.weight(1f)) {
+                                    onPick(key.letter)
+                                }
+                            }
+                            repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
+                        }
+                    }
+                }
+                HorizontalDivider()
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    ('A'..'Z').chunked(6).forEach { row ->
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            row.forEach { ch ->
+                                CtrlPanelKey(ch.toString(), Modifier.weight(1f)) { onPick(ch) }
+                            }
+                            repeat(6 - row.size) { Spacer(Modifier.weight(1f)) }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("关闭") } },
+    )
+}
+
+@Composable
+private fun CtrlPanelKey(text: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    FilledTonalButton(
+        onClick = onClick,
+        modifier = modifier.height(38.dp),
+        contentPadding = PaddingValues(0.dp),
+    ) {
+        Text(text, fontSize = 12.sp, maxLines = 1)
     }
 }
