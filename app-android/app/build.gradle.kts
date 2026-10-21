@@ -55,6 +55,24 @@ if (hasEnvSigning) {
     }
 }
 
+// 版本号规则：x.y.z，修订号 z 取值范围 0..30；超过 30 自动进位到下一个次版本。
+// 例：1.1.30 -> 1.1.30；1.1.31 -> 1.2.0；1.1.61 -> 1.2.30；1.1.62 -> 1.3.0。
+fun normalizeVersion(raw: String): String {
+    val m = Regex("""^(\d+)\.(\d+)\.(\d+)$""").matchEntire(raw.trim())
+        ?: throw GradleException("版本号必须为 x.y.z 格式：\"$raw\"")
+    val major = m.groupValues[1].toInt()
+    var minor = m.groupValues[2].toInt()
+    var patch = m.groupValues[3].toInt()
+    minor += patch / 31
+    patch %= 31
+    return "$major.$minor.$patch"
+}
+
+// 本地默认版本用于不带 -PappVersion 的构建；CI 由标签注入。
+val rawVersionName: String = (project.findProperty("appVersion") as String?)?.trim().orEmpty()
+    .ifEmpty { "1.1.29" }
+val appVersionName: String = normalizeVersion(rawVersionName)
+
 android {
     namespace = "com.serverprobe.manager"
     compileSdk = 36
@@ -65,7 +83,7 @@ android {
         targetSdk = 36
         // CI 通过 -PappVersion=<tag> 注入版本号；本地构建使用默认值
         versionCode = 38
-        versionName = project.findProperty("appVersion") as String? ?: "1.1.29"
+        versionName = appVersionName
     }
 
     signingConfigs {
@@ -125,6 +143,20 @@ logger.lifecycle(
         else -> "[signing] 未提供签名：release 产物将不带签名（请配置 SIGNING_* 环境变量）"
     }
 )
+
+if (rawVersionName != appVersionName) {
+    logger.lifecycle("[version] $rawVersionName 的修订号超过 30，自动归一化为 $appVersionName")
+}
+
+// 计算下一个版本号：./gradlew :app:nextVersion [-PappVersion=x.y.z]
+tasks.register("nextVersion") {
+    group = "help"
+    description = "打印当前版本的下一个版本号（修订号 0..30，超过 30 进位到下一个次版本）"
+    doLast {
+        val (major, minor, patch) = appVersionName.split(".").map { it.toInt() }
+        println(if (patch < 30) "$major.$minor.${patch + 1}" else "$major.${minor + 1}.0")
+    }
+}
 
 kotlin {
     compilerOptions {

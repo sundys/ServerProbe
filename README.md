@@ -86,6 +86,21 @@ cd app-android
 
 要求：JDK 17、Android SDK (compileSdk 36)。正式发布直接 **推送 `v*` 标签**，GitHub Actions 自动编译 Android（armv7/arm64）与探针（amd64/arm64）并创建带更新摘要的 Release；本地构建正式包用 `./gradlew assembleRelease -PappVersion=x.y.z`。
 
+### 版本号规则
+
+APK `versionName` 采用 `主版本.次版本.修订号`，修订号范围为 **0–30**。超过 30 自动进位到下一个次版本并归零：
+
+| 输入 / 标签 | APK 版本 |
+| --- | --- |
+| v1.1.29 | 1.1.29 |
+| v1.1.30 | 1.1.30 |
+| v1.1.31 | **1.2.0**（自动进位） |
+| v1.1.62 | 1.3.0 |
+
+- CI 从 tag 读取版本并自动归一化；若 tag 的修订号超过 30，会在 Actions 日志中给出警告，建议直接使用归一化后的 tag。
+- 查看下一个版本号：`cd app-android && ./gradlew :app:nextVersion`（可用 `-PappVersion=x.y.z` 指定当前版本）。
+- `versionCode` 仍需在 `app/build.gradle.kts` 中手动递增，保持覆盖安装的唯一性。
+
 ### 发布签名（环境变量注入）
 
 CI 编译 Android 正式包时，签名信息**全部从环境变量读取**，口令不写进构建脚本。共 4 个变量：

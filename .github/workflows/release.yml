@@ -76,9 +76,25 @@ jobs:
         id: appver
         run: |
           case "${GITHUB_REF}" in
-            refs/tags/*) echo "value=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT" ;;
-            *)           echo "value=" >> "$GITHUB_OUTPUT" ;;
+            refs/tags/*) RAW="${GITHUB_REF_NAME#v}" ;;
+            *)           echo "value=" >> "$GITHUB_OUTPUT"; exit 0 ;;
           esac
+          if ! [[ "$RAW" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+            echo "::error::标签版本必须为 vX.Y.Z 格式：${GITHUB_REF_NAME}"
+            exit 1
+          fi
+          MAJOR=$((10#${BASH_REMATCH[1]})); MINOR=$((10#${BASH_REMATCH[2]})); PATCH=$((10#${BASH_REMATCH[3]}))
+          # 版本号规则：修订号 0..30，超过 30 自动进位到下一个次版本
+          if [ "$PATCH" -gt 30 ]; then
+            MINOR=$((MINOR + PATCH / 31))
+            PATCH=$((PATCH % 31))
+            NORM="$MAJOR.$MINOR.$PATCH"
+            echo "::warning::标签 ${GITHUB_REF_NAME} 的修订号超过 30，APK 版本自动归一化为 $NORM；建议下次直接打 v$NORM"
+          else
+            NORM="$MAJOR.$MINOR.$PATCH"
+          fi
+          echo "value=$NORM" >> "$GITHUB_OUTPUT"
+          echo "app version: $NORM"
 
       - name: Build release APKs
         working-directory: app-android
