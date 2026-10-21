@@ -52,8 +52,8 @@ android {
         minSdk = 26
         targetSdk = 36
         // CI 通过 -PappVersion=<tag> 注入版本号；本地构建使用默认值
-        versionCode = 36
-        versionName = project.findProperty("appVersion") as String? ?: "1.1.27"
+        versionCode = 37
+        versionName = project.findProperty("appVersion") as String? ?: "1.1.28"
     }
 
     signingConfigs {

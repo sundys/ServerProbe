@@ -8,9 +8,12 @@ import com.serverprobe.manager.data.db.ProbeHostEntity
 import com.serverprobe.manager.data.db.SshHostEntity
 import com.serverprobe.manager.data.probe.ProbeService
 import com.serverprobe.manager.data.repo.ProbeRepository
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -22,7 +25,10 @@ class DetailViewModel(app: Application, private val hostId: Long) : AndroidViewM
     val host: StateFlow<ProbeHostEntity?> = _host
 
     init {
-        viewModelScope.launch { _host.value = mgr.probeRepo.byId(hostId) }
+        viewModelScope.launch {
+            _host.value = mgr.probeRepo.byId(hostId)
+            loadServices()
+        }
     }
 
     val runtime: StateFlow<Map<Long, ProbeRepository.HostRuntime>> = mgr.probeRepo.runtime
@@ -35,15 +41,26 @@ class DetailViewModel(app: Application, private val hostId: Long) : AndroidViewM
     val servicesError = MutableStateFlow<String?>(null)
     val actionResult = MutableStateFlow<String?>(null)
 
+    private var servicesJob: Job? = null
+
+    /**
+     * 读取 systemd 服务列表。
+     *
+     * host 由数据库异步载入，这里先等它出现再发请求：旧实现由界面
+     * `LaunchedEffect(host?.id)` 触发，若首次调用时 host 尚未就绪会被静默
+     * 跳过，表现为“只有搜索框、没有列表也没有任何提示”。
+     * 同一个请求进行中时重复调用会被忽略（刷新按钮/重试按钮防抖）。
+     */
     fun loadServices() {
-        val h = host.value ?: return
-        viewModelScope.launch {
+        if (servicesJob?.isActive == true) return
+        servicesJob = viewModelScope.launch {
+            val h = host.filterNotNull().first()
             servicesLoading.value = true
             servicesError.value = null
             try {
-                services.value = mgr.probeRepo.clientFor(h).services()
+                services.value = mgr.probeRepo.clientFor(h).services().distinctBy { it.unit }
             } catch (e: Exception) {
-                servicesError.value = e.message
+                servicesError.value = e.message ?: e.javaClass.simpleName
                 services.value = emptyList()
             } finally {
                 servicesLoading.value = false
@@ -71,6 +88,8 @@ class DetailViewModel(app: Application, private val hostId: Long) : AndroidViewM
     fun refresh() {
         val h = host.value ?: return
         mgr.probeRepo.refreshAsync(h)
+        // 顶部刷新按钮同时刷新服务列表（旧实现只刷新状态，服务列表要退出页面再进来）
+        loadServices()
     }
 
 }

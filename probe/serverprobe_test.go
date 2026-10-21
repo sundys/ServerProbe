@@ -87,6 +87,37 @@ func TestActionValidation(t *testing.T) {
 	}
 }
 
+// systemctl list-units --no-legend --plain 的典型输出：描述可含空格，
+// 非 systemd 环境还可能夹杂错误行/空行，解析必须跳过而不是错位。
+func TestParseUnitList(t *testing.T) {
+	out := `
+nginx.service         loaded    active   running A high performance web server
+mysql.service         loaded    failed   failed  MySQL Community Server
+auditd.service        not-found inactive dead    auditd.service
+php-fpm@8.2.service   loaded    active   running The PHP 8.2 FastCGI Process Manager
+broken line
+`
+	list := parseUnitList(out)
+	if len(list) != 4 {
+		t.Fatalf("want 4 services, got %d: %+v", len(list), list)
+	}
+	if list[0].Unit != "nginx.service" || list[0].Active != "active" || list[0].Sub != "running" {
+		t.Fatalf("first service parsed wrong: %+v", list[0])
+	}
+	if list[0].Description != "A high performance web server" {
+		t.Fatalf("description should keep spaces: %q", list[0].Description)
+	}
+	if list[1].Active != "failed" || list[2].Load != "not-found" {
+		t.Fatalf("failed/not-found entries parsed wrong: %+v / %+v", list[1], list[2])
+	}
+	if list[3].Unit != "php-fpm@8.2.service" {
+		t.Fatalf("template unit parsed wrong: %+v", list[3])
+	}
+	if parseUnitList("") != nil {
+		t.Fatal("empty output should yield nil")
+	}
+}
+
 func TestFingerprintFormat(t *testing.T) {
 	fp := fingerprintDER(make([]byte, 10))
 	if len(fp) != 3*32-1 {

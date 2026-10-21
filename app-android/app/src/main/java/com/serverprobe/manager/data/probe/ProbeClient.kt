@@ -29,7 +29,8 @@ sealed class ProbeException(message: String) : Exception(message) {
     class RateLimited : ProbeException("请求过于频繁（触发探针限流）")
     class Network(message: String) : ProbeException("网络错误: $message")
     class Tls(message: String) : ProbeException("TLS/证书校验失败: $message")
-    class Http(val code: Int) : ProbeException("HTTP $code")
+    class Http(val code: Int, detail: String? = null) :
+        ProbeException(if (detail.isNullOrBlank()) "HTTP $code" else "HTTP $code: $detail")
     class Parse(message: String) : ProbeException("响应解析失败: $message")
 }
 
@@ -151,7 +152,14 @@ class ProbeClient(
             when {
                 it.code == 401 -> throw ProbeException.Auth()
                 it.code == 429 -> throw ProbeException.RateLimited()
-                !it.isSuccessful -> throw ProbeException.Http(it.code)
+                !it.isSuccessful -> {
+                    // 探针的错误体形如 {"error":"systemctl list-units failed: ..."}。
+                    // 旧实现只报 "HTTP 500"，把真正原因（非 systemd / 权限不足等）丢掉了。
+                    val detail = runCatching {
+                        json.decodeFromString<ProbeErrorResponse>(it.body?.string().orEmpty()).error
+                    }.getOrNull()
+                    throw ProbeException.Http(it.code, detail?.takeIf { d -> d.isNotBlank() })
+                }
             }
             val body = it.body?.string() ?: throw ProbeException.Parse("empty body")
             return try {

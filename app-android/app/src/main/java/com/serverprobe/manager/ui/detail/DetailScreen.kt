@@ -36,6 +36,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -90,7 +91,11 @@ fun DetailScreen(
     var serviceQuery by remember { mutableStateOf("") }
     var pendingAction by remember { mutableStateOf<Pair<ProbeService, String>?>(null) }
 
-    LaunchedEffect(host?.id) { vm.loadServices() }
+    // 服务列表由 ViewModel 在 host 就绪后自动加载（见 DetailViewModel.loadServices）。
+    // 探针从离线恢复时重试一次失败的加载，覆盖“页面打开时探针正好在重启”的场景。
+    LaunchedEffect(rt?.state == ProbeRepository.ConnState.ONLINE) {
+        if (rt?.state == ProbeRepository.ConnState.ONLINE && servicesError != null) vm.loadServices()
+    }
     LaunchedEffect(actionResult) {
         actionResult?.let {
             snackbar.showSnackbar(it)
@@ -280,40 +285,80 @@ fun DetailScreen(
             }
 
             // 服务
+            val serviceList = services
+            val servicesReady = serviceList != null && servicesError == null
+            val filtered = serviceList.orEmpty()
+                .filter { it.unit.contains(serviceQuery, true) || it.description.contains(serviceQuery, true) }
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("系统服务 (systemd)", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
                         if (servicesLoading) {
                             CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                        } else {
+                            IconButton(onClick = { vm.loadServices() }, modifier = Modifier.size(32.dp)) {
+                                Icon(Icons.Default.Refresh, "刷新服务列表", modifier = Modifier.size(18.dp))
+                            }
                         }
+                    }
+                    // 状态行紧贴标题：旧实现把失败/空提示放在搜索框下方，列表为空时
+                    // 整块区域看起来只有一个“没反应的搜索框”。
+                    when {
+                        servicesLoading -> Text(
+                            "正在加载服务列表…",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        servicesError != null -> Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                "获取服务失败：$servicesError",
+                                color = MaterialTheme.colorScheme.error,
+                                style = MaterialTheme.typography.bodySmall,
+                                modifier = Modifier.weight(1f),
+                            )
+                            TextButton(onClick = { vm.loadServices() }) { Text("重试") }
+                        }
+                        serviceList != null -> Text(
+                            if (serviceQuery.isBlank()) {
+                                "共 ${serviceList.size} 个服务"
+                            } else {
+                                "共 ${serviceList.size} 个服务，匹配 ${filtered.size} 个"
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        else -> Text(
+                            "正在准备…",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
                     OutlinedTextField(
                         value = serviceQuery,
                         onValueChange = { serviceQuery = it },
-                        placeholder = { Text("搜索服务…") },
+                        placeholder = { Text(if (servicesReady) "搜索服务…" else "服务列表未就绪") },
                         singleLine = true,
+                        enabled = servicesReady,
                         modifier = Modifier.fillMaxWidth(),
                     )
                 }
             }
 
-            val filtered = services.orEmpty()
-                .filter { it.unit.contains(serviceQuery, true) || it.description.contains(serviceQuery, true) }
-            if (servicesError != null) {
-                item {
-                    Text(
-                        "获取服务失败: $servicesError",
-                        color = MaterialTheme.colorScheme.error,
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                }
-            }
             items(filtered, key = { it.unit }) { svc ->
                 ServiceRow(svc = svc, onAction = { action -> pendingAction = svc to action })
             }
-            if (filtered.isEmpty() && services != null && servicesError == null) {
-                item { Text("没有匹配的服务", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            if (servicesReady && filtered.isEmpty()) {
+                item {
+                    Text(
+                        if (serviceQuery.isBlank()) {
+                            "探针未返回任何服务（该主机可能不是 systemd，或探针无权执行 systemctl）"
+                        } else {
+                            "没有匹配「$serviceQuery」的服务"
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
 
             item { Spacer(Modifier.height(8.dp)) }

@@ -91,6 +91,9 @@ data class ProbeService(
 data class ServicesResponse(val services: List<ProbeService> = emptyList())
 
 @Serializable
+data class ProbeErrorResponse(val error: String = "")
+
+@Serializable
 data class ServiceActionResponse(
     val ok: Boolean = false,
     val output: String = "",
