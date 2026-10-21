@@ -3,44 +3,17 @@ name: Release ServerProbe
 on:
   push:
     tags: [ "v*" ]        # 推送 v 开头的标签时触发编译发布
-  workflow_dispatch:       # 也允许在 GitHub Actions 页面手动触发
+  workflow_dispatch:       # 也允许在 GitHub Actions 页面手动触发（仅编译校验）
 
 permissions:
   contents: write          # 创建 Release 需要写权限
 
 jobs:
-  # ---------- Go 探针：linux amd64 + arm64 ----------
-  build-probe:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-go@v5
-        with:
-          go-version: "1.25"
-
-      - name: Build probe binaries (amd64 + arm64)
-        working-directory: probe
-        run: |
-          mkdir -p pkg/amd64 pkg/arm64
-          GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-s -w" -o pkg/amd64/serverprobe .
-          GOOS=linux GOARCH=arm64 go build -trimpath -ldflags "-s -w" -o pkg/arm64/serverprobe .
-          # 打包：二进制 + 安装脚本 + systemd 单元
-          # 资产名不含版本号，便于通过 releases/latest/download 固定链接引用（一键安装命令）
-          cp install.sh update.sh pkg/amd64/ && cp -r systemd pkg/amd64/
-          cp install.sh update.sh pkg/arm64/ && cp -r systemd pkg/arm64/
-          tar -czf ../serverprobe-linux-amd64.tar.gz -C pkg/amd64 .
-          tar -czf ../serverprobe-linux-arm64.tar.gz -C pkg/arm64 .
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: probe
-          path: |
-            serverprobe-linux-*.tar.gz
-
-  # ---------- Android App：armeabi-v7a + arm64-v8a ----------
-  build-android:
-    runs-on: ubuntu-latest
+  # 单 job 构建：探针 + Android 一起编译，产物直接用于 Release。
+  # 不使用 upload-artifact/download-artifact，因此 Actions 运行页不会留下
+  # 构建产物（Artifacts）区域；正式资产只出现在 Release 中。
+  build-and-release:
+    runs-on: ubuntu-24.04   # 固定版本，避免 ubuntu-latest 迁移带来的环境漂移
     env:
       # 正式签名：4 个环境变量，值取自仓库 Secrets（配置步骤见 README「发布签名」）
       SIGNING_KEYSTORE_BASE64: ${{ secrets.SIGNING_KEYSTORE_BASE64 }}
@@ -48,15 +21,14 @@ jobs:
       SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
       SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: "17"
 
-      - uses: gradle/actions/setup-gradle@v4
-
+      # 先校验签名再编译：缺变量时立刻停止，不浪费一次完整构建
       - name: Verify signing secrets
         run: |
           missing=""
@@ -78,6 +50,28 @@ jobs:
             | grep -E "SHA256:" || true
           rm -f "$RUNNER_TEMP/release.keystore"
 
+      - uses: gradle/actions/setup-gradle@v6
+
+      # ---------- Go 探针：linux amd64 + arm64 ----------
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.25"
+          cache: false       # 探针零第三方依赖，没有 go.sum；关闭缓存避免 restore 警告
+
+      - name: Build probe binaries (amd64 + arm64)
+        working-directory: probe
+        run: |
+          mkdir -p pkg/amd64 pkg/arm64
+          GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-s -w" -o pkg/amd64/serverprobe .
+          GOOS=linux GOARCH=arm64 go build -trimpath -ldflags "-s -w" -o pkg/arm64/serverprobe .
+          # 打包：二进制 + 安装脚本 + systemd 单元
+          # 资产名不含版本号，便于通过 releases/latest/download 固定链接引用（一键安装命令）
+          cp install.sh update.sh pkg/amd64/ && cp -r systemd pkg/amd64/
+          cp install.sh update.sh pkg/arm64/ && cp -r systemd pkg/arm64/
+          tar -czf ../serverprobe-linux-amd64.tar.gz -C pkg/amd64 .
+          tar -czf ../serverprobe-linux-arm64.tar.gz -C pkg/arm64 .
+
+      # ---------- Android App：armeabi-v7a + arm64-v8a ----------
       - name: Resolve app version
         id: appver
         run: |
@@ -101,26 +95,9 @@ jobs:
           mv app-arm64-v8a-release.apk ../../../../../Remoto-android-arm64-v8a.apk
           mv app-armeabi-v7a-release.apk ../../../../../Remoto-android-armeabi-v7a.apk
 
-      - uses: actions/upload-artifact@v4
-        with:
-          name: android
-          path: app-android/Remoto-android-*.apk
-
-  # ---------- 发布 Release（含更新摘要）----------
-  release:
-    needs: [ build-probe, build-android ]
-    # 仅标签触发时创建 Release；workflow_dispatch 手动触发只产出可下载的 APK 产物
-    if: startsWith(github.ref, 'refs/tags/')
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/download-artifact@v4
-        with:
-          merge-multiple: true
-          path: dist
-
+      # ---------- 发布 Release（仅标签触发；含更新摘要）----------
       - name: Extract release notes from CHANGELOG
+        if: startsWith(github.ref, 'refs/tags/')
         run: |
           TAG=${GITHUB_REF_NAME}
           awk -v t="$TAG" '
@@ -138,18 +115,23 @@ jobs:
           echo "----- release notes -----"
           cat release-notes.md
 
-      - name: Stage helper scripts
-        # 把一键安装/更新脚本作为独立 Release 资产发布，
-        # 便于使用 releases/latest/download/install.sh 这样的短链接。
-        run: cp probe/install.sh probe/update.sh dist/
-
       - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
         run: |
+          FILES=(
+            serverprobe-linux-amd64.tar.gz
+            serverprobe-linux-arm64.tar.gz
+            app-android/Remoto-android-arm64-v8a.apk
+            app-android/Remoto-android-armeabi-v7a.apk
+            probe/install.sh
+            probe/update.sh
+          )
+          # 重复触发同一标签时 create 会失败，回退为覆盖上传
           gh release create "$TAG" \
             --title "ServerProbe $TAG" \
             --notes-file release-notes.md \
-            dist/* \
-          || gh release upload "$TAG" dist/* --clobber
+            "${FILES[@]}" \
+          || gh release upload "$TAG" "${FILES[@]}" --clobber

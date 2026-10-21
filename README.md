@@ -131,7 +131,7 @@ gh secret set SIGNING_KEY_PASSWORD
 
 **第 3 步：验证**
 
-`Actions → Release ServerProbe → Run workflow` 手动触发一次。工作流会先校验 4 个变量是否齐全（**缺失或为纯空白都会明确报错并停止编译**，列出缺哪一个），并打印实际 keystore 的证书指纹，随后编译并上传 APK 产物；**手动触发不会创建 Release**，正式发版仍由推送 `v*` 标签触发。构建日志开头会打印 `[signing] 使用环境变量注入的 keystore -> …`，可据此确认签名来源。
+`Actions → Release ServerProbe → Run workflow` 手动触发一次。工作流会先校验 4 个变量是否齐全（**缺失或为纯空白都会明确报错并停止编译**，列出缺哪一个），并打印实际 keystore 的证书指纹，随后编译。**推送 `v*` 标签时自动创建 Release 并上传全部资产；手动触发只做编译校验，不保留构建产物（运行页不再有 Artifacts 区域）**。构建日志开头会打印 `[signing] 使用环境变量注入的 keystore -> …`，可据此确认签名来源。
 
 **本机临时使用环境变量**
 
