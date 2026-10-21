@@ -153,6 +153,7 @@ fun GaugeIndicator(
     percent: Double,
     modifier: Modifier = Modifier,
     detail: String? = null,
+    compact: Boolean = false,
 ) {
     val color = when {
         percent >= 90 -> Color(0xFFFF5A5A)
@@ -164,14 +165,15 @@ fun GaugeIndicator(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(56.dp),
+                .height(if (compact) 44.dp else 56.dp),
             contentAlignment = Alignment.BottomCenter,
         ) {
             Canvas(Modifier.matchParentSize()) {
-                val stroke = 9.dp.toPx()
-                val diameter = size.width - stroke
+                val stroke = (if (compact) 7.dp else 9.dp).toPx()
+                // 同时受宽高约束：竖屏宽度受限，横屏紧凑布局高度受限
+                val diameter = minOf(size.width - stroke, 2f * (size.height - stroke))
                 if (diameter <= 0f) return@Canvas
-                val topLeft = Offset(stroke / 2, stroke / 2)
+                val topLeft = Offset((size.width - diameter) / 2f, stroke / 2f)
                 val arcSize = Size(diameter, diameter)
                 drawArc(trackColor, 180f, 180f, false, topLeft, arcSize, style = Stroke(stroke, cap = StrokeCap.Round))
                 val sweep = (180f * (percent / 100.0).toFloat()).coerceIn(0f, 180f)
@@ -179,13 +181,13 @@ fun GaugeIndicator(
             }
             Text(
                 "%.1f%%".format(percent),
-                style = MaterialTheme.typography.titleSmall,
+                style = if (compact) MaterialTheme.typography.bodySmall else MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.Bold,
             )
         }
         Text(
             label,
-            style = MaterialTheme.typography.labelMedium,
+            style = if (compact) MaterialTheme.typography.labelSmall else MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         if (detail != null) {

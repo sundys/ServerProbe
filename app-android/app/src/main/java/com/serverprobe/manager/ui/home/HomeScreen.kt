@@ -1,5 +1,6 @@
 package com.serverprobe.manager.ui.home
 
+import android.content.res.Configuration
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
@@ -9,6 +10,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -19,8 +21,10 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Dns
@@ -40,6 +44,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -49,6 +54,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -85,6 +91,13 @@ fun HomeScreen(
     var deleteProbe by remember { mutableStateOf<ProbeHostEntity?>(null) }
     var deleteSsh by remember { mutableStateOf<com.serverprobe.manager.data.db.SshHostEntity?>(null) }
 
+    // 横屏手机（可用高度很矮、宽度足够）启用紧凑双栏：左卡片、右 SSH 列表。
+    // 分屏等窄宽场景仍走单列滚动布局，避免两栏各自过窄。
+    val configuration = LocalConfiguration.current
+    val compact = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE &&
+        configuration.screenHeightDp < 500 &&
+        configuration.screenWidthDp >= 600
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -108,55 +121,94 @@ fun HomeScreen(
             )
         },
     ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding),
-        ) {
-            if (hosts.isEmpty()) {
-                EmptyHosts(onAddProbe = onAddProbe, onAddSsh = onAddSsh)
-            } else {
-                HostCardPager(
-                    hosts = hosts,
-                    runtime = runtime,
-                    onDetail = onProbeDetail,
-                    onEdit = onEditProbe,
-                    onDelete = { deleteProbe = it },
-                    onRefresh = vm::refreshNow,
-                )
-            }
-
-            // SSH 快捷主机列表
+        if (compact) {
+            // 横屏双栏：左侧主机卡片，右侧 SSH 主机列表，各自独立滚动
             Row(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
+                    .fillMaxSize()
+                    .padding(padding),
             ) {
-                Icon(
-                    Icons.Default.Terminal,
-                    null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(18.dp),
+                Column(
+                    modifier = Modifier
+                        .weight(1.15f)
+                        .fillMaxHeight()
+                        .verticalScroll(rememberScrollState())
+                        .padding(vertical = 8.dp),
+                ) {
+                    if (hosts.isEmpty()) {
+                        EmptyHosts(onAddProbe = onAddProbe, onAddSsh = onAddSsh)
+                    } else {
+                        HostCardPager(
+                            hosts = hosts,
+                            runtime = runtime,
+                            compact = true,
+                            onDetail = onProbeDetail,
+                            onEdit = onEditProbe,
+                            onDelete = { deleteProbe = it },
+                            onRefresh = vm::refreshNow,
+                        )
+                    }
+                }
+
+                VerticalDivider(
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .padding(vertical = 12.dp),
+                    color = MaterialTheme.colorScheme.outlineVariant,
                 )
-                Spacer(Modifier.width(8.dp))
-                Text("SSH 主机", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                TextButton(onClick = onAddSsh) {
-                    Icon(Icons.Outlined.Add, null, modifier = Modifier.size(16.dp))
-                    Spacer(Modifier.width(4.dp))
-                    Text("添加")
+
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight(),
+                ) {
+                    SshHeader(onAddSsh = onAddSsh)
+                    if (sshHosts.isEmpty()) {
+                        SshEmptyHint()
+                    } else {
+                        LazyColumn(modifier = Modifier.fillMaxWidth().weight(1f)) {
+                            items(sshHosts, key = { it.id }) { ssh ->
+                                SshQuickItem(
+                                    ssh = ssh,
+                                    onClick = { onTerminal(ssh.id) },
+                                    onEdit = { onEditSsh(ssh.id) },
+                                    onDelete = { deleteSsh = ssh },
+                                )
+                            }
+                            item { Spacer(Modifier.height(16.dp)) }
+                        }
+                    }
                 }
             }
+        } else {
+            // 竖屏：整页纵向滚动
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding),
+                contentPadding = PaddingValues(bottom = 16.dp),
+            ) {
+                item {
+                    if (hosts.isEmpty()) {
+                        EmptyHosts(onAddProbe = onAddProbe, onAddSsh = onAddSsh)
+                    } else {
+                        HostCardPager(
+                            hosts = hosts,
+                            runtime = runtime,
+                            compact = false,
+                            onDetail = onProbeDetail,
+                            onEdit = onEditProbe,
+                            onDelete = { deleteProbe = it },
+                            onRefresh = vm::refreshNow,
+                        )
+                    }
+                }
 
-            if (sshHosts.isEmpty()) {
-                Text(
-                    "还没有 SSH 主机，点击右上角「＋」保存服务器登录信息，点击即可一键连接终端。",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = 20.dp),
-                )
-            } else {
-                LazyColumn(modifier = Modifier.weight(1f)) {
+                item { SshHeader(onAddSsh = onAddSsh) }
+
+                if (sshHosts.isEmpty()) {
+                    item { SshEmptyHint() }
+                } else {
                     items(sshHosts, key = { it.id }) { ssh ->
                         SshQuickItem(
                             ssh = ssh,
@@ -165,7 +217,6 @@ fun HomeScreen(
                             onDelete = { deleteSsh = ssh },
                         )
                     }
-                    item { Spacer(Modifier.height(16.dp)) }
                 }
             }
         }
@@ -187,6 +238,40 @@ fun HomeScreen(
             onDismiss = { deleteSsh = null },
         )
     }
+}
+
+@Composable
+private fun SshHeader(onAddSsh: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            Icons.Default.Terminal,
+            null,
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(18.dp),
+        )
+        Spacer(Modifier.width(8.dp))
+        Text("SSH 主机", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+        TextButton(onClick = onAddSsh) {
+            Icon(Icons.Outlined.Add, null, modifier = Modifier.size(16.dp))
+            Spacer(Modifier.width(4.dp))
+            Text("添加")
+        }
+    }
+}
+
+@Composable
+private fun SshEmptyHint() {
+    Text(
+        "还没有 SSH 主机，点击右上角「＋」保存服务器登录信息，点击即可一键连接终端。",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(horizontal = 20.dp),
+    )
 }
 
 @Composable
@@ -222,13 +307,14 @@ private fun EmptyHosts(onAddProbe: () -> Unit, onAddSsh: () -> Unit) {
 private fun HostCardPager(
     hosts: List<ProbeHostEntity>,
     runtime: Map<Long, ProbeRepository.HostRuntime>,
+    compact: Boolean,
     onDetail: (Long) -> Unit,
     onEdit: (Long) -> Unit,
     onDelete: (ProbeHostEntity) -> Unit,
     onRefresh: (ProbeHostEntity) -> Unit,
 ) {
     val pagerState = rememberPagerState(pageCount = { hosts.size })
-    Column {
+    Column(Modifier.fillMaxWidth()) {
         HorizontalPager(
             state = pagerState,
             pageSpacing = 12.dp,
@@ -238,6 +324,7 @@ private fun HostCardPager(
             HostCard(
                 host = host,
                 rt = runtime[host.id],
+                compact = compact,
                 onClick = { onDetail(host.id) },
                 onEdit = { onEdit(host.id) },
                 onDelete = { onDelete(host) },
@@ -248,16 +335,22 @@ private fun HostCardPager(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = 10.dp),
+                    .padding(top = if (compact) 6.dp else 10.dp),
                 horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 repeat(hosts.size) { i ->
                     val active = pagerState.currentPage == i
+                    val dotSize = when {
+                        active && compact -> 7.dp
+                        active -> 8.dp
+                        compact -> 5.dp
+                        else -> 6.dp
+                    }
                     Box(
                         modifier = Modifier
                             .padding(horizontal = 4.dp)
-                            .size(if (active) 8.dp else 6.dp)
+                            .size(dotSize)
                             .clip(CircleShape)
                             .background(
                                 if (active) MaterialTheme.colorScheme.primary
@@ -275,6 +368,7 @@ private fun HostCardPager(
 private fun HostCard(
     host: ProbeHostEntity,
     rt: ProbeRepository.HostRuntime?,
+    compact: Boolean,
     onClick: () -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
@@ -285,13 +379,30 @@ private fun HostCard(
     val online = rt?.state == ProbeRepository.ConnState.ONLINE
     val checking = rt?.state == ProbeRepository.ConnState.CHECKING
 
+    val netLoadText = buildString {
+        val net = st?.net?.maxByOrNull { it.rxBps + it.txBps }
+        if (net != null) {
+            append("↓${formatBps(net.rxBps)} ↑${formatBps(net.txBps)}  ")
+        }
+        append("负载 ${"%.2f".format(st?.load1 ?: 0.0)}")
+    }
+    val uptimeText = "运行 ${formatUptime(st?.uptimeSec ?: 0.0)}"
+    val hasTraffic = st?.let { it.netDay.total + it.netMonth.total + it.netTotal.total > 0 } == true
+    val trafficToday = st?.let { "流量 今日 ↓${formatTrafficMB(it.netDay.rx)} ↑${formatTrafficMB(it.netDay.tx)}" }
+    val trafficMonth = st?.let {
+        "本月 ${formatTrafficMB(it.netMonth.rx)} ↓ / ${formatTrafficMB(it.netMonth.tx)} ↑ · 总 ${formatTrafficMB(it.netTotal.total)}"
+    }
+
     ElevatedCard(
         modifier = Modifier
             .fillMaxWidth()
             .combinedClickable(onClick = onClick, onLongClick = { menu = true }),
         shape = RoundedCornerShape(20.dp),
     ) {
-        Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(
+            Modifier.padding(if (compact) 12.dp else 18.dp),
+            verticalArrangement = Arrangement.spacedBy(if (compact) 8.dp else 12.dp),
+        ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
                     Icons.Default.Dns,
@@ -355,70 +466,136 @@ private fun HostCard(
                 }
             }
 
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                GaugeIndicator("CPU", st?.cpuPercent ?: 0.0, Modifier.weight(1f))
-                GaugeIndicator(
-                    "内存",
-                    st?.memPercent ?: 0.0,
-                    Modifier.weight(1f),
-                    detail = st?.let { memDetail(it.memUsedBytes, it.memTotalBytes) },
-                )
-                GaugeIndicator(
-                    "磁盘",
-                    st?.disks?.maxByOrNull { it.usedPercent }?.usedPercent ?: 0.0,
-                    Modifier.weight(1f),
-                    detail = st?.disks?.maxByOrNull { it.usedPercent }?.let { formatPct(it.usedPercent) },
-                )
-            }
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-            ) {
-                Text(
-                    buildString {
-                        val net = st?.net?.maxByOrNull { it.rxBps + it.txBps }
-                        if (net != null) {
-                            append("↓${formatBps(net.rxBps)} ↑${formatBps(net.txBps)}  ")
+            if (compact) {
+                // 横屏紧凑布局：左侧仪表，右侧统计/流量，充分利用横向空间
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Row(
+                        modifier = Modifier.weight(1.15f),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        GaugeIndicator("CPU", st?.cpuPercent ?: 0.0, Modifier.weight(1f), compact = true)
+                        GaugeIndicator(
+                            "内存",
+                            st?.memPercent ?: 0.0,
+                            Modifier.weight(1f),
+                            detail = st?.let { memDetail(it.memUsedBytes, it.memTotalBytes) },
+                            compact = true,
+                        )
+                        GaugeIndicator(
+                            "磁盘",
+                            st?.disks?.maxByOrNull { it.usedPercent }?.usedPercent ?: 0.0,
+                            Modifier.weight(1f),
+                            detail = st?.disks?.maxByOrNull { it.usedPercent }?.let { formatPct(it.usedPercent) },
+                            compact = true,
+                        )
+                    }
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                    ) {
+                        Text(
+                            netLoadText,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            uptimeText,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        if (hasTraffic && trafficToday != null && trafficMonth != null) {
+                            Text(
+                                trafficToday,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            Text(
+                                trafficMonth,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
                         }
-                        append("负载 ${"%.2f".format(st?.load1 ?: 0.0)}")
-                    },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Text(
-                    "运行 ${formatUptime(st?.uptimeSec ?: 0.0)}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
+                        rt?.error?.let { err ->
+                            Text(
+                                err,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
+                }
+            } else {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    GaugeIndicator("CPU", st?.cpuPercent ?: 0.0, Modifier.weight(1f))
+                    GaugeIndicator(
+                        "内存",
+                        st?.memPercent ?: 0.0,
+                        Modifier.weight(1f),
+                        detail = st?.let { memDetail(it.memUsedBytes, it.memTotalBytes) },
+                    )
+                    GaugeIndicator(
+                        "磁盘",
+                        st?.disks?.maxByOrNull { it.usedPercent }?.usedPercent ?: 0.0,
+                        Modifier.weight(1f),
+                        detail = st?.disks?.maxByOrNull { it.usedPercent }?.let { formatPct(it.usedPercent) },
+                    )
+                }
 
-            // 流量统计（探针持久化累计；旧版探针无此数据时隐藏）：两行展示，不省略
-            st?.let { s ->
-                if (s.netDay.total + s.netMonth.total + s.netTotal.total > 0) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Text(
+                        netLoadText,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        uptimeText,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+
+                // 流量统计（探针持久化累计；旧版探针无此数据时隐藏）
+                if (hasTraffic && trafficToday != null && trafficMonth != null) {
                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         Text(
-                            "流量 今日 ↓${formatTrafficMB(s.netDay.rx)} ↑${formatTrafficMB(s.netDay.tx)}",
+                            trafficToday,
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                         Text(
-                            "本月 ${formatTrafficMB(s.netMonth.rx)} ↓ / ${formatTrafficMB(s.netMonth.tx)} ↑ · 总 ${formatTrafficMB(s.netTotal.total)}",
+                            trafficMonth,
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                 }
-            }
 
-            rt?.error?.let { err ->
-                Text(
-                    err,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                rt?.error?.let { err ->
+                    Text(
+                        err,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
         }
     }
