@@ -17,8 +17,9 @@ plugins {
 //     SIGNING_KEY_ALIAS        密钥别名（key alias）
 //     SIGNING_KEY_PASSWORD     密钥口令（key password）
 //   四者齐全 → 解码后写入 build/signing/release.keystore 并用于签名（build/ 已被
-//   .gitignore 忽略，不会入库）；否则回退仓库内的 app/signing/serverprobe.keystore，
-//   便于本机直接出正式包。
+//   .gitignore 忽略，不会入库）。
+//   本机构建未设置环境变量时回退到 app/signing/serverprobe.keystore —— 该文件仅
+//   保留在本机、已加入 .gitignore，不随仓库分发；CI 禁止回退，缺变量直接失败。
 // ---------------------------------------------------------------------------
 val signingEnvKeys = listOf(
     "SIGNING_KEYSTORE_BASE64",
@@ -29,8 +30,19 @@ val signingEnvKeys = listOf(
 val signingEnv: Map<String, String> = signingEnvKeys.associateWith { System.getenv(it)?.trim().orEmpty() }
 val hasEnvSigning: Boolean = signingEnv.values.none { it.isEmpty() }
 val fallbackKeystore = file("signing/serverprobe.keystore")
-val hasFallbackSigning: Boolean = fallbackKeystore.exists()
+// CI 只认 Secrets；本机 keystore 仅用于本地出包
+val isCi: Boolean = !System.getenv("GITHUB_ACTIONS").isNullOrBlank()
+val hasFallbackSigning: Boolean = !isCi && fallbackKeystore.exists()
 val envKeystoreFile = layout.buildDirectory.file("signing/release.keystore").get().asFile
+
+// 缺少任一签名变量时直接中止 CI 编译，而不是用错误密钥（或未签名）继续出包。
+if (isCi && !hasEnvSigning) {
+    val missing = signingEnv.filterValues { it.isEmpty() }.keys
+    throw GradleException(
+        "CI 构建要求签名环境变量齐全，当前缺失: ${missing.joinToString(", ")}。" +
+            "请在仓库 Settings → Secrets and variables → Actions 中配置 SIGNING_*（见 README「发布签名」）。",
+    )
+}
 
 if (hasEnvSigning) {
     // 兼容多行 Base64（去掉换行/空白后再解码）
@@ -109,7 +121,7 @@ android {
 logger.lifecycle(
     when {
         hasEnvSigning -> "[signing] 使用环境变量注入的 keystore -> $envKeystoreFile"
-        hasFallbackSigning -> "[signing] 使用仓库内置 keystore -> $fallbackKeystore"
+        hasFallbackSigning -> "[signing] 使用本机 keystore（未入库）-> $fallbackKeystore"
         else -> "[signing] 未提供签名：release 产物将不带签名（请配置 SIGNING_* 环境变量）"
     }
 )

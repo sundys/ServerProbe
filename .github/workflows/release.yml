@@ -61,13 +61,22 @@ jobs:
         run: |
           missing=""
           for name in SIGNING_KEYSTORE_BASE64 SIGNING_STORE_PASSWORD SIGNING_KEY_ALIAS SIGNING_KEY_PASSWORD; do
-            [ -n "$(printenv "$name")" ] || missing="$missing $name"
+            value="${!name:-}"
+            # 剔除空白后再判断：纯空白的 Secret 视为未配置
+            value="${value//[[:space:]]/}"
+            [ -n "$value" ] || missing="$missing $name"
           done
           if [ -n "$missing" ]; then
-            echo "::error::缺少签名环境变量:$missing —— 请在仓库 Settings → Secrets and variables → Actions 中配置（步骤见 README「发布签名」）"
+            echo "::error::缺少签名环境变量:$missing —— 已停止编译。请在仓库 Settings → Secrets and variables → Actions 中配置（步骤见 README「发布签名」）"
             exit 1
           fi
           echo "签名环境变量已就绪，Android 正式包将使用环境变量中的 keystore 签名。"
+          # 打印实际证书指纹，便于在日志里确认发布包由哪把密钥签名
+          printf '%s' "$SIGNING_KEYSTORE_BASE64" | tr -d '[:space:]' | base64 -d > "$RUNNER_TEMP/release.keystore"
+          keytool -list -v -keystore "$RUNNER_TEMP/release.keystore" \
+            -storepass:env SIGNING_STORE_PASSWORD -alias "$SIGNING_KEY_ALIAS" \
+            | grep -E "SHA256:" || true
+          rm -f "$RUNNER_TEMP/release.keystore"
 
       - name: Resolve app version
         id: appver

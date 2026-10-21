@@ -97,7 +97,7 @@ CI 编译 Android 正式包时，签名信息**全部从环境变量读取**，�
 | `SIGNING_KEY_ALIAS` | 密钥别名（key alias） |
 | `SIGNING_KEY_PASSWORD` | 密钥口令（key password） |
 
-四个变量（或 Secrets）**齐全**时使用环境变量中的签名；否则回退到仓库内的 `app-android/app/signing/serverprobe.keystore`，保证本机仍可直接出正式包。
+四个变量（或 Secrets）**齐全**时使用环境变量中的签名。**CI 构建缺少任何一个变量都会在配置阶段直接失败并停止编译**，绝不回退；本机构建未设置变量时回退到 `app-android/app/signing/serverprobe.keystore`（该文件只保留在本机、已加入 `.gitignore`，不随仓库分发）。
 
 **第 1 步：把 keystore 编码为 Base64**
 
@@ -131,7 +131,7 @@ gh secret set SIGNING_KEY_PASSWORD
 
 **第 3 步：验证**
 
-`Actions → Release ServerProbe → Run workflow` 手动触发一次。工作流会先校验 4 个变量是否齐全（缺失则明确报错并列出缺哪一个），随后编译并上传 APK 产物；**手动触发不会创建 Release**，正式发版仍由推送 `v*` 标签触发。构建日志开头会打印 `[signing] 使用环境变量注入的 keystore -> …`，可据此确认签名来源。
+`Actions → Release ServerProbe → Run workflow` 手动触发一次。工作流会先校验 4 个变量是否齐全（**缺失或为纯空白都会明确报错并停止编译**，列出缺哪一个），并打印实际 keystore 的证书指纹，随后编译并上传 APK 产物；**手动触发不会创建 Release**，正式发版仍由推送 `v*` 标签触发。构建日志开头会打印 `[signing] 使用环境变量注入的 keystore -> …`，可据此确认签名来源。
 
 **本机临时使用环境变量**
 
@@ -143,8 +143,8 @@ $env:SIGNING_KEY_PASSWORD    = "你的密钥口令"
 cd app-android; ./gradlew assembleRelease
 ```
 
-> 安全提示：仓库内的 `app-android/app/signing/serverprobe.keystore` 为个人项目固定签名（保证更新包可覆盖安装），其口令也写在构建脚本里。既然 CI 已支持环境变量注入，若日后要公开维护，建议**把该文件移出仓库**并只通过 Secrets 分发（本地留一份备份即可），否则私钥等同于公开。
-> 注意：换用新签名会导致与旧包签名不一致，用户需卸载重装；请固定使用同一份 keystore。
+> 安全提示：`app-android/app/signing/serverprobe.keystore` 仅供本机测试签名，已加入 `.gitignore`、不再随仓库分发（建议在仓库外另留备份）。CI 只使用 Secrets 中的 keystore，缺少变量会直接停止编译，不会静默回退。
+> 注意：v1.1.25 起正式包改用 Secrets 中的新 keystore（与 ≤v1.1.20 使用的仓库内旧 keystore 不同），跨过该版本的旧安装包**不能覆盖安装**，需卸载重装；请固定使用同一份 keystore。
 
 ## App 使用
 
