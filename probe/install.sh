@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ServerProbe 探针一键安装脚本（Linux, systemd）
 # 一键用法（脚本从 /tmp 运行，结束后自动删除）：
-#   curl -fsSL -o /tmp/sp-install.sh https://raw.githubusercontent.com/sundys/ServerProbe/main/probe/install.sh && sudo bash /tmp/sp-install.sh
+#   curl -fsSL -o /tmp/sp-install.sh https://github.com/sundys/ServerProbe/releases/latest/download/install.sh && sudo bash /tmp/sp-install.sh
 # 手动用法（root）：
 #   bash install.sh [--token TOKEN] [--port 9822] [--binary PATH] [--download URL] [--dir DIR]
 #

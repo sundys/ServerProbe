@@ -3,7 +3,7 @@
 # 只替换 /usr/local/bin/serverprobe 并重启服务，不改动 /etc/serverprobe 下的
 # config.json / cert.pem / key.pem —— Token 与证书指纹保持不变。
 # 一键用法（脚本从 /tmp 运行，结束后自动删除）：
-#   curl -fsSL -o /tmp/sp-update.sh https://raw.githubusercontent.com/sundys/ServerProbe/main/probe/update.sh && sudo bash /tmp/sp-update.sh
+#   curl -fsSL -o /tmp/sp-update.sh https://github.com/sundys/ServerProbe/releases/latest/download/update.sh && sudo bash /tmp/sp-update.sh
 # 手动用法（root）：
 #   bash update.sh [--binary PATH] [--download URL] [--service serverprobe] [--dir DIR]
 #

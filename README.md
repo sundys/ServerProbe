@@ -34,7 +34,7 @@ ServerProbe/
 一条命令完成安装（脚本下载到 `/tmp` 运行，结束后自动删除，系统里不留文件）：
 
 ```bash
-curl -fsSL -o /tmp/sp-install.sh https://raw.githubusercontent.com/sundys/ServerProbe/main/probe/install.sh && sudo bash /tmp/sp-install.sh
+curl -fsSL -o /tmp/sp-install.sh https://github.com/sundys/ServerProbe/releases/latest/download/install.sh && sudo bash /tmp/sp-install.sh
 ```
 
 脚本会自动识别 amd64/arm64 架构 → 从最新 Release 下载探针 → 生成配置（首次安装自动生成随机 Token 与自签证书；重复安装沿用现有 Token/指纹）→ 注册并启动 systemd 服务（开机自启）。终端会打印 **Token 与证书指纹**，填到 App「添加探针」即可。
@@ -42,7 +42,7 @@ curl -fsSL -o /tmp/sp-install.sh https://raw.githubusercontent.com/sundys/Server
 需要自定义时在命令末尾追加参数，例如指定 Token 或端口：
 
 ```bash
-curl -fsSL -o /tmp/sp-install.sh https://raw.githubusercontent.com/sundys/ServerProbe/main/probe/install.sh && sudo bash /tmp/sp-install.sh --token <TOKEN> --port 9822
+curl -fsSL -o /tmp/sp-install.sh https://github.com/sundys/ServerProbe/releases/latest/download/install.sh && sudo bash /tmp/sp-install.sh --token <TOKEN> --port 9822
 ```
 
 | 参数 | 说明 |
@@ -53,7 +53,9 @@ curl -fsSL -o /tmp/sp-install.sh https://raw.githubusercontent.com/sundys/Server
 | `--download <URL>` | 从指定 URL 下载二进制 |
 | `--dir <DIR>` | 配置目录，默认 `/etc/serverprobe` |
 
-> - 国内服务器访问 GitHub 失败时，在脚本 URL 前加代理前缀（如 `https://gh-proxy.com/`），或给脚本指定下载镜像：
+> - 国内服务器访问 GitHub 失败时，给脚本 URL 加代理前缀，例如：
+>   `curl -fsSL -o /tmp/sp-install.sh https://gh-proxy.com/https://github.com/sundys/ServerProbe/releases/latest/download/install.sh && sudo bash /tmp/sp-install.sh`
+> - 若脚本能下载、只是探针包下载慢，可单独指定探针包镜像：
 >   `sudo SP_RELEASE_BASE='https://gh-proxy.com/https://github.com/sundys/ServerProbe/releases/latest/download' bash /tmp/sp-install.sh`
 > - 防火墙放行端口：`sudo ufw allow 9822/tcp`（或 firewalld / 云厂商安全组）
 > - 查看现有配置：`sudo serverprobe show`
@@ -64,7 +66,7 @@ curl -fsSL -o /tmp/sp-install.sh https://raw.githubusercontent.com/sundys/Server
 已安装过的服务器升级探针，一条命令即可（脚本运行结束后自动删除）：
 
 ```bash
-curl -fsSL -o /tmp/sp-update.sh https://raw.githubusercontent.com/sundys/ServerProbe/main/probe/update.sh && sudo bash /tmp/sp-update.sh
+curl -fsSL -o /tmp/sp-update.sh https://github.com/sundys/ServerProbe/releases/latest/download/update.sh && sudo bash /tmp/sp-update.sh
 ```
 
 脚本只替换 `/usr/local/bin/serverprobe` 并重启服务，**不会改动 `/etc/serverprobe/config.json`**，Token、证书与指纹保持不变，App 里已添加的主机无需修改。
