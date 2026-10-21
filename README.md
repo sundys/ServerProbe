@@ -43,6 +43,20 @@ sudo bash -c 'mkdir -p /etc/serverprobe && curl -fsSL -o /tmp/sp.tar.gz https://
 > - 防火墙放行端口：`sudo ufw allow 9822/tcp`（或 firewalld / 云厂商安全组）
 > - 查看现有配置：`sudo serverprobe show`
 
+## 探针一键更新（仅替换二进制）
+
+已安装过的服务器升级探针时，只需替换二进制并重启，**不会改动 `/etc/serverprobe/config.json`**（Token、证书与指纹保持不变）：
+
+```bash
+sudo bash -c 'curl -fsSL -o /tmp/sp.tar.gz https://github.com/sundys/ServerProbe/releases/latest/download/serverprobe-linux-$(uname -m | sed "s/x86_64/amd64/;s/aarch64/arm64/").tar.gz && rm -rf /tmp/sp && mkdir /tmp/sp && tar -xzf /tmp/sp.tar.gz -C /tmp/sp && install -m 0755 /tmp/sp/serverprobe /usr/local/bin/.serverprobe.new && mv -f /usr/local/bin/.serverprobe.new /usr/local/bin/serverprobe && systemctl restart serverprobe && systemctl is-active serverprobe && rm -rf /tmp/sp /tmp/sp.tar.gz'
+```
+
+命令说明：下载最新 Release 中对应架构的探针包 → 先装到同目录临时文件再**原子替换**（避免直接覆盖运行中的二进制报 `Text file busy`）→ 重启 systemd 服务并确认状态 → 清理临时文件。
+
+> - 该命令只覆盖 `/usr/local/bin/serverprobe`，不执行 `init` / `install.sh`，因此 **Token 与证书指纹不变**，App 里已添加的主机无需修改。
+> - 如需连 systemd unit 一起更新，请使用上面的「探针一键安装」命令；默认安装路径下重装同样会保留 Token 与指纹。
+> - 国内服务器访问 GitHub 失败时，同样把 `https://github.com/` 替换为 `https://gh-proxy.com/` 等加速前缀。
+
 ## App 构建
 
 ```bash
