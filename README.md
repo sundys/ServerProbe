@@ -31,31 +31,48 @@ ServerProbe/
 
 ## 探针一键安装（Linux / systemd）
 
-先在服务器上生成配置拿到 Token（也可以只跑一次 `init`）：
+一条命令完成安装（脚本下载到 `/tmp` 运行，结束后自动删除，系统里不留文件）：
 
 ```bash
-sudo bash -c 'mkdir -p /etc/serverprobe && curl -fsSL -o /tmp/sp.tar.gz https://github.com/sundys/ServerProbe/releases/latest/download/serverprobe-linux-$(uname -m | sed "s/x86_64/amd64/;s/aarch64/arm64/").tar.gz && rm -rf /tmp/sp && mkdir /tmp/sp && tar -xzf /tmp/sp.tar.gz -C /tmp/sp && bash /tmp/sp/install.sh --token $(/tmp/sp/serverprobe init | awk "/^token:/{print \$2}") && rm -rf /tmp/sp /tmp/sp.tar.gz'
+curl -fsSL -o /tmp/sp-install.sh https://raw.githubusercontent.com/sundys/ServerProbe/main/probe/install.sh && sudo bash /tmp/sp-install.sh
 ```
 
-命令说明：自动识别 amd64/arm64 架构 → 从最新 Release 下载探针包 → 解压 → 执行 `serverprobe init` 生成随机 Token 与自签证书 → `install.sh` 安装并注册 systemd 服务（开机自启），终端会打印 **Token 与证书指纹**（App「添加探针」时使用）。
+脚本会自动识别 amd64/arm64 架构 → 从最新 Release 下载探针 → 生成配置（首次安装自动生成随机 Token 与自签证书；重复安装沿用现有 Token/指纹）→ 注册并启动 systemd 服务（开机自启）。终端会打印 **Token 与证书指纹**，填到 App「添加探针」即可。
 
-> - 国内服务器若访问 GitHub 失败，把命令中的 `https://github.com/` 替换为 `https://gh-proxy.com/`（或 ghfast.top 等加速前缀）重试
+需要自定义时在命令末尾追加参数，例如指定 Token 或端口：
+
+```bash
+curl -fsSL -o /tmp/sp-install.sh https://raw.githubusercontent.com/sundys/ServerProbe/main/probe/install.sh && sudo bash /tmp/sp-install.sh --token <TOKEN> --port 9822
+```
+
+| 参数 | 说明 |
+| --- | --- |
+| `--token <TOKEN>` | 指定 Token；省略时首次安装自动生成、重复安装沿用现有 |
+| `--port <PORT>` | 监听端口，默认 `9822` |
+| `--binary <PATH>` | 使用本地二进制（离线安装） |
+| `--download <URL>` | 从指定 URL 下载二进制 |
+| `--dir <DIR>` | 配置目录，默认 `/etc/serverprobe` |
+
+> - 国内服务器访问 GitHub 失败时，在脚本 URL 前加代理前缀（如 `https://gh-proxy.com/`），或给脚本指定下载镜像：
+>   `sudo SP_RELEASE_BASE='https://gh-proxy.com/https://github.com/sundys/ServerProbe/releases/latest/download' bash /tmp/sp-install.sh`
 > - 防火墙放行端口：`sudo ufw allow 9822/tcp`（或 firewalld / 云厂商安全组）
 > - 查看现有配置：`sudo serverprobe show`
+> - 离线安装：下载 Release 中的 `serverprobe-linux-<arch>.tar.gz`，解压后执行 `sudo bash install.sh`（脚本与二进制同目录时直接使用本地二进制）。
 
 ## 探针一键更新（仅替换二进制）
 
-已安装过的服务器升级探针时，只需替换二进制并重启，**不会改动 `/etc/serverprobe/config.json`**（Token、证书与指纹保持不变）：
+已安装过的服务器升级探针，一条命令即可（脚本运行结束后自动删除）：
 
 ```bash
-sudo bash -c 'curl -fsSL -o /tmp/sp.tar.gz https://github.com/sundys/ServerProbe/releases/latest/download/serverprobe-linux-$(uname -m | sed "s/x86_64/amd64/;s/aarch64/arm64/").tar.gz && rm -rf /tmp/sp && mkdir /tmp/sp && tar -xzf /tmp/sp.tar.gz -C /tmp/sp && install -m 0755 /tmp/sp/serverprobe /usr/local/bin/.serverprobe.new && mv -f /usr/local/bin/.serverprobe.new /usr/local/bin/serverprobe && systemctl restart serverprobe && systemctl is-active serverprobe && rm -rf /tmp/sp /tmp/sp.tar.gz'
+curl -fsSL -o /tmp/sp-update.sh https://raw.githubusercontent.com/sundys/ServerProbe/main/probe/update.sh && sudo bash /tmp/sp-update.sh
 ```
 
-命令说明：下载最新 Release 中对应架构的探针包 → 先装到同目录临时文件再**原子替换**（避免直接覆盖运行中的二进制报 `Text file busy`）→ 重启 systemd 服务并确认状态 → 清理临时文件。
+脚本只替换 `/usr/local/bin/serverprobe` 并重启服务，**不会改动 `/etc/serverprobe/config.json`**，Token、证书与指纹保持不变，App 里已添加的主机无需修改。
 
-> - 该命令只覆盖 `/usr/local/bin/serverprobe`，不执行 `init` / `install.sh`，因此 **Token 与证书指纹不变**，App 里已添加的主机无需修改。
+可选参数：`--service <NAME>`（服务名，默认 `serverprobe`）、`--binary <PATH>`、`--download <URL>`；国内网络同样可用 `SP_RELEASE_BASE` 指定镜像前缀。
+
 > - 如需连 systemd unit 一起更新，请使用上面的「探针一键安装」命令；默认安装路径下重装同样会保留 Token 与指纹。
-> - 国内服务器访问 GitHub 失败时，同样把 `https://github.com/` 替换为 `https://gh-proxy.com/` 等加速前缀。
+> - 两个脚本都只在 `/tmp`、`/var/tmp` 下运行时自删；从仓库目录直接执行不会删除源文件。
 
 ## App 构建
 

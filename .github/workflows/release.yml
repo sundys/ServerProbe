@@ -27,8 +27,8 @@ jobs:
           GOOS=linux GOARCH=arm64 go build -trimpath -ldflags "-s -w" -o pkg/arm64/serverprobe .
           # 打包：二进制 + 安装脚本 + systemd 单元
           # 资产名不含版本号，便于通过 releases/latest/download 固定链接引用（一键安装命令）
-          cp install.sh pkg/amd64/ && cp -r systemd pkg/amd64/
-          cp install.sh pkg/arm64/ && cp -r systemd pkg/arm64/
+          cp install.sh update.sh pkg/amd64/ && cp -r systemd pkg/amd64/
+          cp install.sh update.sh pkg/arm64/ && cp -r systemd pkg/arm64/
           tar -czf ../serverprobe-linux-amd64.tar.gz -C pkg/amd64 .
           tar -czf ../serverprobe-linux-arm64.tar.gz -C pkg/arm64 .
 
@@ -128,6 +128,11 @@ jobs:
           fi
           echo "----- release notes -----"
           cat release-notes.md
+
+      - name: Stage helper scripts
+        # 把一键安装/更新脚本作为独立 Release 资产发布，
+        # 便于使用 releases/latest/download/install.sh 这样的短链接。
+        run: cp probe/install.sh probe/update.sh dist/
 
       - name: Create GitHub Release
         env:

@@ -1,5 +1,24 @@
 # 更新摘要 / Changelog
 
+## v1.1.29
+
+**修复：详情页服务列表 NetworkOnMainThreadException；探针安装/更新改为一键脚本**
+
+### 服务列表 NetworkOnMainThreadException
+
+- **根因**：`ProbeClient.call()` 只把 `execute()` 放到 IO 线程，`parseBody()` 里的 `ResponseBody.string()` 仍在**调用方协程**执行。首页轮询运行在 `Dispatchers.Default` 上所以正常；详情页 `loadServices()` 使用 `viewModelScope`（主线程），读取响应体时触发 Android 的 `NetworkOnMainThreadException`。该异常在 v1.1.28 之前就一直存在，只是错误提示被埋在搜索框下方看不见；v1.1.28 把状态行提到标题下方后才暴露出来。
+- **修复**：`parseBody()` 改为 `suspend`，把整个“读响应体 + JSON 解析”放入 `withContext(Dispatchers.IO)`；`info` / `status` / `services` / `serviceAction` 全部受益。服务启动/停止/重启操作走同一路径，也一并修复。
+- v1.1.28 引入的状态行、错误原因透传与刷新/重试逻辑保持不变。
+
+### 探针一键安装 / 更新脚本
+
+- 新增 `probe/update.sh`：只替换 `/usr/local/bin/serverprobe` 并重启服务，不触碰 `config.json` / 证书（Token 与指纹不变）；替换前先试运行新二进制（防错误架构/损坏文件），再用同目录临时文件 + `mv` 原子替换（避免 `Text file busy`）。
+- 重做 `probe/install.sh`：支持从最新 Release **自动下载对应架构的探针包**，不再要求脚本与二进制同目录；`--token` 变为可选（首次安装自动生成，重复安装沿用现有 Token/指纹）；替换前校验二进制；重装时显式 `systemctl restart` 确保新版本生效；修复 `--dir` 自定义目录时 systemd unit 未带 `--config`、导致服务起不来的问题。
+- 两个脚本在 `/tmp`、`/var/tmp` 下运行时**退出自删**，并清理下载/解压的临时目录；从仓库目录执行不会删除源文件。
+- README 的安装/更新章节改为短命令；CI 将两个脚本随探针 tarball 一起打包，并作为独立 Release 资产发布。
+
+> 验证：Go 测试与 Linux 交叉编译、`:app:testDebugUnitTest`、`:app:assembleDebug`、`:app:assembleRelease` 均通过；两个脚本在 WSL 真实 systemd + 本地模拟 Release 源下完成首次安装、重复安装（Token/指纹保留）、一键更新（Token 保留）与自删测试。
+
 ## v1.1.28
 
 **修复：主机详情页 systemd 服务列表空白、搜索框输入无反应**

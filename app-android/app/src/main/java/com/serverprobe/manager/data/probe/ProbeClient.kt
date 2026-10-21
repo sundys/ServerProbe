@@ -147,28 +147,35 @@ class ProbeClient(
         }
     }
 
-    private inline fun <reified T> parseBody(response: Response, deserializer: (String) -> T): T {
-        response.use {
-            when {
-                it.code == 401 -> throw ProbeException.Auth()
-                it.code == 429 -> throw ProbeException.RateLimited()
-                !it.isSuccessful -> {
-                    // 探针的错误体形如 {"error":"systemctl list-units failed: ..."}。
-                    // 旧实现只报 "HTTP 500"，把真正原因（非 systemd / 权限不足等）丢掉了。
-                    val detail = runCatching {
-                        json.decodeFromString<ProbeErrorResponse>(it.body?.string().orEmpty()).error
-                    }.getOrNull()
-                    throw ProbeException.Http(it.code, detail?.takeIf { d -> d.isNotBlank() })
+    /**
+     * 读取并解析响应体。**必须整体切到 IO**：`call()`/`post()` 只把
+     * `execute()` 放在 IO，`ResponseBody.string()` 同样会读 socket；若在调用方
+     * 协程（如 viewModelScope = 主线程）里读取，Android 会抛
+     * NetworkOnMainThreadException。
+     */
+    private suspend fun <T> parseBody(response: Response, deserializer: (String) -> T): T =
+        withContext(Dispatchers.IO) {
+            response.use {
+                when {
+                    it.code == 401 -> throw ProbeException.Auth()
+                    it.code == 429 -> throw ProbeException.RateLimited()
+                    !it.isSuccessful -> {
+                        // 探针的错误体形如 {"error":"systemctl list-units failed: ..."}。
+                        // 旧实现只报 "HTTP 500"，把真正原因（非 systemd / 权限不足等）丢掉了。
+                        val detail = runCatching {
+                            json.decodeFromString<ProbeErrorResponse>(it.body?.string().orEmpty()).error
+                        }.getOrNull()
+                        throw ProbeException.Http(it.code, detail?.takeIf { d -> d.isNotBlank() })
+                    }
+                }
+                val body = it.body?.string() ?: throw ProbeException.Parse("empty body")
+                try {
+                    deserializer(body)
+                } catch (e: Exception) {
+                    throw ProbeException.Parse(e.message ?: "bad json")
                 }
             }
-            val body = it.body?.string() ?: throw ProbeException.Parse("empty body")
-            return try {
-                deserializer(body)
-            } catch (e: Exception) {
-                throw ProbeException.Parse(e.message ?: "bad json")
-            }
         }
-    }
 
     suspend fun info(): ProbeInfo = parseBody(call("/api/v1/info")) { json.decodeFromString(it) }
 
