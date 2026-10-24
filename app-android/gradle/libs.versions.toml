@@ -15,6 +15,11 @@ coroutines = "1.10.2"
 sshj = "0.38.0"
 eddsa = "0.3.0"
 biometric = "1.1.0"
+# 显式提升 fragment：biometric 1.1.0 -> appcompat 1.2.0 会把 fragment 拉到 1.2.5，
+# 该版本的 FragmentActivity.startActivityForResult 限制 requestCode 高 16 位必须为 0，
+# 与 activity 1.10 的 ActivityResultRegistry（从 0x10000 起随机）冲突，
+# 任何 rememberLauncherForActivityResult().launch() 都会抛 IllegalArgumentException。
+fragment = "1.8.9"
 zxing = "4.3.0"
 junit = "4.13.2"
 
@@ -41,6 +46,7 @@ kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-
 sshj = { group = "com.hierynomus", name = "sshj", version.ref = "sshj" }
 eddsa = { group = "net.i2p.crypto", name = "eddsa", version.ref = "eddsa" }
 biometric = { group = "androidx.biometric", name = "biometric", version.ref = "biometric" }
+androidx-fragment = { group = "androidx.fragment", name = "fragment", version.ref = "fragment" }
 zxing-android-embedded = { group = "com.journeyapps", name = "zxing-android-embedded", version.ref = "zxing" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 

@@ -1,5 +1,17 @@
 # 更新摘要 / Changelog
 
+## v1.2.1
+
+**修复：点击「扫码添加」直接闪退（进程崩溃）**
+
+- **根因**：`androidx.fragment` 被 `biometric 1.1.0 → appcompat 1.2.0` 的传递依赖压在 **1.2.5**。该版本的 `FragmentActivity.startActivityForResult()` 会校验 requestCode 高 16 位必须为 0（`Can only use lower 16 bits for requestCode`），而 `androidx.activity 1.10.1` 的 `ActivityResultRegistry` 生成的 requestCode 从 `0x10000` 起随机取值，两者相撞直接抛 `IllegalArgumentException`，导致进程被杀。
+- **影响范围**：任何 `rememberLauncherForActivityResult(...).launch()` 都会崩，不限于扫码——`KeyFilePicker` / `SafLauncher` 的多通道选择此前前 5 条 androidx 通道全部抛异常，只是被 `runCatching` 兜到最后的 Legacy 通道，才表现为"能用但绕了远路"。
+- **修复**：显式声明 `androidx.fragment:fragment:1.8.9`，覆盖传递依赖的 1.2.5（1.8.x 已移除该 requestCode 限制）。
+- **验证**：在真机（Android 9）上复现原崩溃并抓取 dropbox 堆栈确认根因；修复后 debug 与 release 包点击「扫码添加」均正常进入扫码页、相机预览正常、返回键正常回到列表，手动添加对话框不受影响。
+- 版本号 40/1.2.0 → 41/1.2.1。
+
+> 验证：`:app:testDebugUnitTest`、`:app:assembleDebug`、`:app:assembleRelease` 通过；release APK 在真机实测扫码入口正常。
+
 ## v1.2.0
 
 **远程：链接解析兼容新版（v4 起所有版本）；右上角「＋」改为二级菜单并新增扫码添加**
