@@ -1,6 +1,7 @@
 # 云枢 Remoto — 服务探针管理系统
 
 [![Release](https://img.shields.io/github/v/release/sundys/ServerProbe?label=%E6%9C%80%E6%96%B0%E7%89%88%E6%9C%AC)](https://github.com/sundys/ServerProbe/releases)
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 
 管理多台服务器运行状态的 **Android App（云枢 / Remoto）** + 部署在服务器上的 **Go 探针 Agent**。
 
@@ -171,3 +172,33 @@ cd app-android; ./gradlew assembleRelease
 ## 常见问题
 
 - **文件选择/权限**：选择私钥文件基于系统 SAF 机制，App **无需存储权限**（仅申请网络、生物识别、安装更新三项）。部分 ROM 会在文件选择器打开期间查杀后台应用，建议在系统设置中将云枢的电池策略设为「无限制」；如仍异常，可改用私钥「直接粘贴输入」，或通过 设置 → 关于 → 复制诊断日志 反馈。
+
+## 开源许可
+
+本项目采用 **GNU Affero General Public License v3.0（AGPL-3.0）** 开源，完整条款见仓库根目录的 [LICENSE](LICENSE)。
+
+```
+Copyright (C) 2026 sundys
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as published
+by the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program.  If not, see <https://www.gnu.org/licenses/>.
+```
+
+**这对使用者意味着什么**
+
+- **可以**：自由使用、修改、分发本项目（含商用），无需支付费用。
+- **必须**：分发本项目或其修改版时，同样以 AGPL-3.0 开源并提供完整源码；保留版权与许可声明。
+- **特别注意（AGPL 与 GPL 的区别）**：即使你**不分发**，只是把修改版部署成网络服务供他人使用，也必须向这些使用者提供对应源码。
+- **不提供担保**：软件按「现状」提供，作者不对使用后果承担责任。
+
+> 探针 Agent 与 Android App 均适用上述条款。若需在闭源/商业场景中使用，请联系作者获取另行授权。
