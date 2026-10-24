@@ -77,91 +77,6 @@ curl -fsSL -o /tmp/sp-update.sh https://github.com/sundys/ServerProbe/releases/l
 > - 如需连 systemd unit 一起更新，请使用上面的「探针一键安装」命令；默认安装路径下重装同样会保留 Token 与指纹。
 > - 两个脚本都只在 `/tmp`、`/var/tmp` 下运行时自删；从仓库目录直接执行不会删除源文件。
 
-## App 构建
-
-```bash
-cd app-android
-./gradlew assembleDebug        # 产物: app/build/outputs/apk/debug/
-./gradlew test                 # 备份加密 / 终端模拟器 / 版本比较单元测试
-```
-
-要求：JDK 17、Android SDK (compileSdk 36)。正式发布直接 **推送 `v*` 标签**，GitHub Actions 自动编译 Android（armv7/arm64）与探针（amd64/arm64）并创建带更新摘要的 Release；本地构建正式包用 `./gradlew assembleRelease -PappVersion=x.y.z`。
-
-### 版本号规则
-
-APK `versionName` 采用 `主版本.次版本.修订号`，修订号范围为 **0–30**。超过 30 自动进位到下一个次版本并归零：
-
-| 输入 / 标签 | APK 版本 |
-| --- | --- |
-| v1.1.29 | 1.1.29 |
-| v1.1.30 | 1.1.30 |
-| v1.1.31 | **1.2.0**（自动进位） |
-| v1.1.62 | 1.3.0 |
-
-- CI 从 tag 读取版本并自动归一化；若 tag 的修订号超过 30，会在 Actions 日志中给出警告，建议直接使用归一化后的 tag。
-- 查看下一个版本号：`cd app-android && ./gradlew :app:nextVersion`（可用 `-PappVersion=x.y.z` 指定当前版本）。
-- `versionCode` 仍需在 `app/build.gradle.kts` 中手动递增，保持覆盖安装的唯一性。
-
-### 发布签名（环境变量注入）
-
-CI 编译 Android 正式包时，签名信息**全部从环境变量读取**，口令不写进构建脚本。共 4 个变量：
-
-| 环境变量 | 含义 |
-| --- | --- |
-| `SIGNING_KEYSTORE_BASE64` | keystore 文件的 **Base64** 内容（整个文件编码后的字符串，允许带换行） |
-| `SIGNING_STORE_PASSWORD` | keystore 库口令（store password） |
-| `SIGNING_KEY_ALIAS` | 密钥别名（key alias） |
-| `SIGNING_KEY_PASSWORD` | 密钥口令（key password） |
-
-四个变量（或 Secrets）**齐全**时使用环境变量中的签名。**CI 构建缺少任何一个变量都会在配置阶段直接失败并停止编译**，绝不回退；本机构建未设置变量时回退到 `app-android/app/signing/serverprobe.keystore`（该文件只保留在本机、已加入 `.gitignore`，不随仓库分发）。
-
-**第 1 步：把 keystore 编码为 Base64**
-
-```powershell
-# Windows PowerShell（复制到剪贴板）
-[Convert]::ToBase64String([IO.File]::ReadAllBytes("app-android\app\signing\serverprobe.keystore")) | Set-Clipboard
-```
-
-```bash
-# Linux（-w 0 表示不换行；不换行或带换行都可被识别）
-base64 -w 0 app-android/app/signing/serverprobe.keystore
-
-# macOS
-base64 -i app-android/app/signing/serverprobe.keystore
-```
-
-**第 2 步：在 GitHub 仓库中创建 4 个 Secret**
-
-网页端：`Settings → Secrets and variables → Actions → New repository secret`，名称与上表完全一致，逐个创建（`SIGNING_KEYSTORE_BASE64` 粘贴第 1 步得到的整段字符串）。
-
-或用 `gh` CLI：
-
-```bash
-gh secret set SIGNING_KEYSTORE_BASE64 --body "$(base64 -w 0 app-android/app/signing/serverprobe.keystore)"
-gh secret set SIGNING_STORE_PASSWORD
-gh secret set SIGNING_KEY_ALIAS
-gh secret set SIGNING_KEY_PASSWORD
-```
-
-后三条会交互式提示输入口令（也可加 `--body "<口令>"`）。Secret 一经保存即可，不用担心换行符——构建脚本会先剔除空白再解码。
-
-**第 3 步：验证**
-
-`Actions → Release ServerProbe → Run workflow` 手动触发一次。工作流会先校验 4 个变量是否齐全（**缺失或为纯空白都会明确报错并停止编译**，列出缺哪一个），并打印实际 keystore 的证书指纹，随后编译。**推送 `v*` 标签时自动创建 Release 并上传全部资产；手动触发只做编译校验，不保留构建产物（运行页不再有 Artifacts 区域）**。构建日志开头会打印 `[signing] 使用环境变量注入的 keystore -> …`，可据此确认签名来源。
-
-**本机临时使用环境变量**
-
-```powershell
-$env:SIGNING_KEYSTORE_BASE64 = [Convert]::ToBase64String([IO.File]::ReadAllBytes("app-android\app\signing\serverprobe.keystore"))
-$env:SIGNING_STORE_PASSWORD  = "你的库口令"
-$env:SIGNING_KEY_ALIAS       = "serverprobe"
-$env:SIGNING_KEY_PASSWORD    = "你的密钥口令"
-cd app-android; ./gradlew assembleRelease
-```
-
-> 安全提示：`app-android/app/signing/serverprobe.keystore` 仅供本机测试签名，已加入 `.gitignore`、不再随仓库分发（建议在仓库外另留备份）。CI 只使用 Secrets 中的 keystore，缺少变量会直接停止编译，不会静默回退。
-> 注意：v1.1.25 起正式包改用 Secrets 中的新 keystore（与 ≤v1.1.20 使用的仓库内旧 keystore 不同），跨过该版本的旧安装包**不能覆盖安装**，需卸载重装；请固定使用同一份 keystore。
-
 ## App 使用
 
 1. 「＋ → 添加探针主机」填写地址 / 端口 / Token，建议点「获取指纹」并核对后锁定
@@ -202,3 +117,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 - **不提供担保**：软件按「现状」提供，作者不对使用后果承担责任。
 
 > 探针 Agent 与 Android App 均适用上述条款。若需在闭源/商业场景中使用，请联系作者获取另行授权。
+
+## 社区
+
+- 欢迎加入 **Linux.do 社区** 交流反馈：<https://linux.do>
