@@ -70,7 +70,7 @@ fun normalizeVersion(raw: String): String {
 
 // 本地默认版本用于不带 -PappVersion 的构建；CI 由标签注入。
 val rawVersionName: String = (project.findProperty("appVersion") as String?)?.trim().orEmpty()
-    .ifEmpty { "1.1.30" }
+    .ifEmpty { "1.2.0" }
 val appVersionName: String = normalizeVersion(rawVersionName)
 
 android {
@@ -82,7 +82,7 @@ android {
         minSdk = 26
         targetSdk = 36
         // CI 通过 -PappVersion=<tag> 注入版本号；本地构建使用默认值
-        versionCode = 39
+        versionCode = 40
         versionName = appVersionName
     }
 
@@ -187,5 +187,6 @@ dependencies {
     implementation(libs.sshj)
     implementation(libs.eddsa)
     implementation(libs.biometric)
+    implementation(libs.zxing.android.embedded)
     testImplementation(libs.junit)
 }

@@ -1,5 +1,23 @@
 # 更新摘要 / Changelog
 
+## v1.2.0
+
+**远程：链接解析兼容新版（v4 起所有版本）；右上角「＋」改为二级菜单并新增扫码添加**
+
+- **解析规则重做**（`LinkParser`）：原规则硬性要求 `sid` 与 `hash` 同时存在，而新版链接为 `https://zcode.z.ai/remote/v4?sid=…&mid=…&name=…&app_version=…`（无 `hash`），因此一律提示「无法识别」。新规则与版本号解耦：
+  - 路径为 `/remote` 或 `/remote/<任意版本段>`（v4 / v5 / 无版本 / 多级路径）即视为远程链接；路径不符时，只要带 `sid` / `hash` 之一也接受；
+  - 不再要求 `sid` + `hash` 组合，缺 `hash` 不再判失败；
+  - 参数名大小写不敏感；`?` 查询串与 `#` 片段里的参数都会读取（兼容凭证放进路由片段的链接）；
+  - 版本号取 `app_version`，缺失时回退 `version`；名称仍取 `name`，缺省「未命名电脑」；
+  - 粘贴容错：整段分享文字中自动取第一条 URL；自动去除零宽字符/BOM、`&amp;`、全角 `＆`/`？`、首尾引号与中文句尾标点。
+  - 拆解改用自研轻量 `UrlParts`（不依赖 `android.net.Uri`），解析逻辑可在 JVM 单测中直接覆盖，新增 `LinkParserTest`（9 个用例）。
+- **右上角「＋」改为二级菜单**：点击展开「手动添加」（原粘贴对话框）与「扫码添加」。
+- **扫码添加**：接入 `zxing-android-embedded` 4.3.0，调用系统相机扫二维码，识别成功即自动保存为卡片（按解析出的名称提示）；扫到的内容无法解析时，自动带原文打开手动添加页供修正。新增 `QrScanActivity`，方向跟随设备（库默认锁横屏，竖屏手持扫码不自然）。
+- **顺带修复**：`EditLinkActivity` 在输入变为无效时未清空保存按钮上的解析结果，存在用上一次有效链接保存的风险。
+- README 功能说明同步更新；版本号 39/1.1.30 → 40/1.2.0（修订位超过 30 按规则进位）。
+
+> 验证：`:app:testDebugUnitTest`（含新增 `LinkParserTest`）、`:app:assembleDebug`、`:app:assembleRelease` 通过；release APK 内 `QrScanActivity` 已注册且 `screenOrientation=fullSensor`。
+
 ## v1.1.30
 
 **修复：手机横屏时首页只能看到半圆仪表、页面无法滑动；新增横屏双栏紧凑布局**

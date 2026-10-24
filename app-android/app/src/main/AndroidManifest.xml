@@ -65,6 +65,16 @@
             </intent-filter>
         </activity>
 
+        <!-- 远程：扫码添加（zxing CaptureActivity，方向跟随设备而非库默认的横屏） -->
+        <activity
+            android:name=".remote.QrScanActivity"
+            android:clearTaskOnLaunch="true"
+            android:exported="false"
+            android:screenOrientation="fullSensor"
+            android:stateNotNeeded="true"
+            android:theme="@style/zxing_CaptureTheme"
+            android:windowSoftInputMode="stateAlwaysHidden" />
+
         <!-- SSH 终端：切后台保活（仅在"有活跃会话 且 App 在后台"时运行，见 SshSessionKeeper） -->
         <service
             android:name=".ssh.SshKeepAliveService"

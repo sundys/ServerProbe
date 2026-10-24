@@ -4,6 +4,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
@@ -26,6 +27,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Devices
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -57,8 +59,11 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.journeyapps.barcodescanner.ScanContract
+import com.journeyapps.barcodescanner.ScanOptions
 import com.serverprobe.manager.remote.Link
 import com.serverprobe.manager.remote.LinkParser
+import com.serverprobe.manager.remote.QrScanActivity
 import com.serverprobe.manager.remote.RemoteActivity
 import com.serverprobe.manager.ui.components.ConfirmDialog
 import java.text.SimpleDateFormat
@@ -75,7 +80,24 @@ fun RemoteScreen(vm: RemoteViewModel = viewModel()) {
     val ctx = LocalContext.current
     var editing by remember { mutableStateOf<Link?>(null) }
     var showAdd by remember { mutableStateOf(false) }
+    var addMenu by remember { mutableStateOf(false) }
     var deleteTarget by remember { mutableStateOf<Link?>(null) }
+    // 扫码内容无法识别时，带着原文打开手动添加页，用户可直接修正后保存
+    var scannedText by remember { mutableStateOf<String?>(null) }
+
+    val scanLauncher = rememberLauncherForActivityResult(ScanContract()) { result ->
+        val contents = result.contents?.trim()
+        if (contents.isNullOrEmpty()) return@rememberLauncherForActivityResult // 用户取消
+        val link = LinkParser.parse(contents)
+        if (link != null) {
+            vm.upsert(link)
+            Toast.makeText(ctx, "已添加「${link.name}」", Toast.LENGTH_SHORT).show()
+        } else {
+            scannedText = contents
+            editing = null
+            showAdd = true
+        }
+    }
 
     // 从 WebView 返回、分享接入等场景刷新列表
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -92,8 +114,39 @@ fun RemoteScreen(vm: RemoteViewModel = viewModel()) {
             TopAppBar(
                 title = { Text("远程", fontWeight = FontWeight.Bold) },
                 actions = {
-                    IconButton(onClick = { showAdd = true; editing = null }) {
-                        Icon(Icons.Default.Add, "添加链接")
+                    // 右上角「＋」：二级菜单（手动添加 / 扫码添加）
+                    Box {
+                        IconButton(onClick = { addMenu = true }) {
+                            Icon(Icons.Default.Add, "添加链接")
+                        }
+                        DropdownMenu(expanded = addMenu, onDismissRequest = { addMenu = false }) {
+                            DropdownMenuItem(
+                                text = { Text("手动添加") },
+                                leadingIcon = { Icon(Icons.Default.Add, null) },
+                                onClick = {
+                                    addMenu = false
+                                    editing = null
+                                    scannedText = null
+                                    showAdd = true
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("扫码添加") },
+                                leadingIcon = { Icon(Icons.Default.QrCodeScanner, null) },
+                                onClick = {
+                                    addMenu = false
+                                    scanLauncher.launch(
+                                        ScanOptions()
+                                            .setDesiredBarcodeFormats(ScanOptions.QR_CODE)
+                                            .setPrompt("将电脑上的 ZCode 远程二维码放入取景框")
+                                            .setBeepEnabled(false)
+                                            .setOrientationLocked(false)
+                                            .setBarcodeImageEnabled(false)
+                                            .setCaptureActivity(QrScanActivity::class.java),
+                                    )
+                                },
+                            )
+                        }
                     }
                 },
             )
@@ -147,11 +200,12 @@ fun RemoteScreen(vm: RemoteViewModel = viewModel()) {
     if (showAdd) {
         LinkEditDialog(
             editing = editing,
-            onDismiss = { showAdd = false; editing = null },
+            initialUrl = scannedText,
+            onDismiss = { showAdd = false; editing = null; scannedText = null },
             onSave = { link ->
                 vm.upsert(link)
                 Toast.makeText(ctx, "已保存「${link.name}」", Toast.LENGTH_SHORT).show()
-                showAdd = false; editing = null
+                showAdd = false; editing = null; scannedText = null
             },
         )
     }
@@ -260,10 +314,13 @@ private fun LinkCard(
 @Composable
 private fun LinkEditDialog(
     editing: Link?,
+    initialUrl: String? = null,
     onDismiss: () -> Unit,
     onSave: (Link) -> Unit,
 ) {
-    var url by remember(editing?.id) { mutableStateOf(editing?.url ?: "") }
+    var url by remember(editing?.id, initialUrl) {
+        mutableStateOf(editing?.url ?: initialUrl.orEmpty())
+    }
     val parsed = remember(url, editing?.id) {
         if (url.isBlank()) null else LinkParser.parse(url, editing)
     }

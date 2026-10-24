@@ -53,6 +53,7 @@ class EditLinkActivity : FragmentActivity() {
                 preview.visibility = View.GONE
                 btnSave.isEnabled = false
                 btnSave.alpha = 0.45f
+                btnSave.tag = null
                 return
             }
             preview.visibility = View.VISIBLE
@@ -64,6 +65,7 @@ class EditLinkActivity : FragmentActivity() {
                 tvStatus.setTextColor(0xFFD32F2F.toInt())
                 btnSave.isEnabled = false
                 btnSave.alpha = 0.45f
+                btnSave.tag = null
             } else {
                 tvName.text = parsed.name
                 tvVersion.text = if (parsed.version.isEmpty())
