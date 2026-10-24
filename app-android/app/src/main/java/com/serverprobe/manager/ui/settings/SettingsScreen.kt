@@ -75,6 +75,7 @@ fun SettingsScreen(
     val updateState by vm.updateState.collectAsState()
     val ctx = LocalContext.current
 
+    var showAbout by remember { mutableStateOf(false) }
     var pendingExport by remember { mutableStateOf(false) }
     var pendingImportUri by remember { mutableStateOf<android.net.Uri?>(null) }
     var passphrase by remember { mutableStateOf("") }
@@ -272,8 +273,29 @@ fun SettingsScreen(
                     Text("复制诊断日志（用于反馈问题）")
                 }
             }
+
+            // 关于与开源许可
+            Section("关于") {
+                Text(
+                    "云枢 Remoto · v$currentVersion",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Text(
+                    "本项目以 AGPL-3.0 开源；此处可查看第三方开源组件清单。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                OutlinedButton(
+                    onClick = { showAbout = true },
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text("开源许可与第三方组件") }
+            }
             Spacer(Modifier.height(20.dp))
         }
+    }
+
+    if (showAbout) {
+        AboutScreen(versionName = currentVersion, onBack = { showAbout = false })
     }
 
     // 导出：输入口令

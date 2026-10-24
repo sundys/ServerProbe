@@ -1,5 +1,16 @@
 # 更新摘要 / Changelog
 
+## 未发布
+
+**设置新增「关于」：开源许可与第三方组件清单**
+
+- 设置页新增「关于」分组，展示版本号，并可进入「开源许可与第三方组件」页面。
+- 关于页包含：项目信息与开源主页、AGPL-3.0 许可说明（含"网络服务也须开源"的关键差异）与全文链接、第三方开源组件清单。
+- 第三方清单按许可证分组列出 103 个随 release 包实际解析到的运行时组件（AndroidX / Compose / Kotlin / OkHttp / sshj / ZXing / BouncyCastle / eddsa / slf4j 等），许可证名称可点击跳转官方全文；数据内置在 `ThirdPartyLicenses.kt`，离线可查。
+- 新增 `ThirdPartyLicensesTest`：校验清单非空、无重复坐标、分组不丢项、关键依赖齐备。
+
+> 验证：`:app:testDebugUnitTest`、`:app:assembleDebug`、`:app:assembleRelease` 通过。
+
 ## v1.2.1
 
 **修复：点击「扫码添加」直接闪退（进程崩溃）**
